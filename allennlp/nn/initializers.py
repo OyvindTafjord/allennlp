@@ -91,6 +91,8 @@ def rnn_forget_bias(bias: torch.Tensor,
     """
     An initializer which sets a specific value to the "forget" section (from position 1/4 to 1/2)
     of a bias vector, the other elements are set to zero.
+    See https://github.com/pytorch/pytorch/issues/750
+
     Parameters
     ----------
     bias : ``torch.Tensor``, required.
