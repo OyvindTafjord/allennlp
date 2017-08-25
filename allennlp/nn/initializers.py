@@ -86,6 +86,30 @@ def block_orthogonal(tensor: torch.Tensor,
         tensor[block_slice] = torch.nn.init.orthogonal(tensor[block_slice].contiguous(), gain=gain)
 
 
+def rnn_forget_bias(bias: torch.Tensor,
+                    val: float = 1.0) -> torch.Tensor:
+    """
+    An initializer which sets a specific value to the "forget" section (from position 1/4 to 1/2)
+    of a bias vector, the other elements are set to zero.
+    Parameters
+    ----------
+    bias : ``torch.Tensor``, required.
+        A bias (e.g., in LSTM or GRU) to initialize.
+    val : float, optional (default = 1.0)
+        The value assigned to the forget portion of the bias vector.
+    """
+
+    if isinstance(bias, Variable):
+        rnn_forget_bias(bias.data, val)
+        return bias
+
+    bias_size = bias.size(0)
+    start, end = bias_size//4, bias_size//2
+    bias.fill_(0.0)
+    bias[start:end].fill_(val)
+    return bias
+
+
 def _initializer_wrapper(init_function: Callable[..., None]) -> Type[Initializer]:
     class Init(Initializer):
         def __init__(self, **kwargs):
@@ -114,7 +138,8 @@ Registrable._registry[Initializer] = {  # pylint: disable=protected-access
         "kaiming_uniform": _initializer_wrapper(torch.nn.init.kaiming_uniform),
         "sparse": _initializer_wrapper(torch.nn.init.sparse),
         "eye": _initializer_wrapper(torch.nn.init.eye),
-        "block_orthogonal": _initializer_wrapper(block_orthogonal)
+        "block_orthogonal": _initializer_wrapper(block_orthogonal),
+        "rnn_forget_bias": _initializer_wrapper(rnn_forget_bias)
 }
 
 
