@@ -70,7 +70,35 @@
       "num_layers": 2,
       "dropout": 0.2
     },
-    "dropout": 0.2
+    "dropout": 0.2,
+    "initializer": [
+      [
+        "bias_ih",
+        {
+          "type": "rnn_forget_bias"
+        }
+      ],
+      [
+        "bias_hh",
+        {
+          "type": "constant",
+          "val": 0.0
+        }
+      ],
+      [
+        "bias",
+        {
+          "type": "constant",
+          "val": 0.0
+        }
+      ],
+      [
+        "weight",
+        {
+          "type": "xavier_uniform"
+        }
+      ]
+    ]
   },
   "iterator": {
     "type": "bucket",
