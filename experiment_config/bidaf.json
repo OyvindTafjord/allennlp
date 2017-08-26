@@ -93,7 +93,21 @@
         }
       ],
       [
-        "weight",
+        "token_embedder_tokens",
+        {
+          "type": "none"
+        }
+      ],
+      [
+        "similarity_function.*weight_vector",
+        {
+          "type": "normal",
+          "mean": 0,
+          "std": 0.1
+        }
+      ],
+      [
+        "\.weight",
         {
           "type": "xavier_uniform"
         }
