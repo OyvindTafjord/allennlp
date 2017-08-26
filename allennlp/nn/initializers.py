@@ -174,17 +174,15 @@ class InitializerApplicator:
         """
         logger.info("Initializing parameters")
         unused_regexes = set([initializer[0] for initializer in self._initializers])
-        uninitialized_parameters = set()
+        uninitialized_parameters = set([name for name, _ in module.named_parameters()])
         # Store which initialisers were applied to which parameters.
-        for name, parameter in module.named_parameters():
-            for initializer_regex, initializer in self._initializers:
-                if re.search(initializer_regex, name):
+        for initializer_regex, initializer in self._initializers:
+            for name, parameter in module.named_parameters():
+                if name in uninitialized_parameters and re.search(initializer_regex, name):
                     logger.info("Initializing %s using %s intitializer", name, initializer_regex)
                     initializer(parameter)
                     unused_regexes.discard(initializer_regex)
-                    break
-            else:  # no break
-                uninitialized_parameters.add(name)
+                    uninitialized_parameters.discard(name)
         for regex in unused_regexes:
             logger.warning("Did not use initialization regex that was passed: %s", regex)
         logger.info("Done initializing parameters; the following parameters are using their "

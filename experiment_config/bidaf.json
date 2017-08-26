@@ -77,6 +77,26 @@
         {
           "type": "rnn_forget_bias"
         }
+      ],
+      [
+        "bias_hh",
+        {
+          "type": "constant",
+          "val": 0.0
+        }
+      ],
+      [
+        "bias",
+        {
+          "type": "constant",
+          "val": 0.0
+        }
+      ],
+      [
+        "weight",
+        {
+          "type": "xavier_uniform"
+        }
       ]
     ]
   },
