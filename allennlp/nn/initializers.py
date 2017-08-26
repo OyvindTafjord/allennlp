@@ -87,7 +87,7 @@ def block_orthogonal(tensor: torch.Tensor,
 
 
 def rnn_forget_bias(bias: torch.Tensor,
-                    val: float = 1.0) -> torch.Tensor:
+                    val: float = 1.0) -> None:
     """
     An initializer which sets a specific value to the "forget" section (from position 1/4 to 1/2)
     of a bias vector, the other elements are set to zero.
@@ -141,7 +141,8 @@ Registrable._registry[Initializer] = {  # pylint: disable=protected-access
         "sparse": _initializer_wrapper(torch.nn.init.sparse),
         "eye": _initializer_wrapper(torch.nn.init.eye),
         "block_orthogonal": _initializer_wrapper(block_orthogonal),
-        "rnn_forget_bias": _initializer_wrapper(rnn_forget_bias)
+        "rnn_forget_bias": _initializer_wrapper(rnn_forget_bias),
+        "none": _initializer_wrapper(lambda x: x)
 }
 
 
