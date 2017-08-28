@@ -52,5 +52,5 @@ class Highway(torch.nn.Module):
             gate = projected_input[:, (1 * self._input_dim):(2 * self._input_dim)]
             nonlinear_part = self._activation(nonlinear_part)
             gate = torch.nn.functional.sigmoid(gate)
-            current_input = gate * linear_part + (1 - gate) * nonlinear_part
+            current_input = (1 - gate) * linear_part + (gate) * nonlinear_part
         return current_input
