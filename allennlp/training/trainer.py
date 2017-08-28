@@ -1,3 +1,4 @@
+from copy import deepcopy
 import logging
 import os
 import shutil
@@ -105,6 +106,7 @@ class Trainer:
 
         self._log_interval = 10  # seconds
         self._summary_interval = 100  # num batches between logging to tensorboard
+        self._moving_average = 0.98
 
     def train(self) -> None:
         epoch_counter = 0
@@ -125,6 +127,10 @@ class Trainer:
             for parameter in self._model.parameters():
                 if parameter.requires_grad:
                     parameter.register_hook(clip_function)
+        parameters_average = None
+        if self._moving_average is not None:
+            parameter_list_grad = [p for p in self._model.parameters() if p.requires_grad]
+            parameters_average = deepcopy(list(p.data for p in parameter_list_grad))
 
         logger.info("Beginning training.")
         num_training_batches = self._iterator.get_num_batches(self._train_dataset)
@@ -163,6 +169,10 @@ class Trainer:
                 if self._grad_norm:
                     clip_grad_norm(self._model.parameters(), self._grad_norm)
                 self._optimizer.step()
+                if self._moving_average is not None:
+                    for p, p_avg in zip(parameter_list_grad, parameters_average):
+                        p_avg.mul_(self._moving_average).add_((1-self._moving_average) * p.data)
+
                 metrics = self._model.get_metrics()
                 metrics["loss"] = float(train_loss / batch_num)
                 description = self._description_from_metrics(metrics)
@@ -191,6 +201,11 @@ class Trainer:
                 val_generator_tqdm = tqdm.tqdm(val_generator,
                                                disable=self._no_tqdm,
                                                total=num_validation_batches)
+                if self._moving_average is not None:
+                    parameters_saved = list(p.data for p in parameter_list_grad)
+                    for p, p_avg in zip(parameter_list_grad, parameters_average):
+                        p.data = p_avg
+
                 batch_num = 0
                 for batch in val_generator_tqdm:
                     batch_num += 1
@@ -205,6 +220,9 @@ class Trainer:
                     if self._no_tqdm and time.time() - last_log > self._log_interval:
                         logger.info("Batch %d/%d: %s", batch_num, num_validation_batches, description)
                         last_log = time.time()
+                if self._moving_average is not None:
+                    for p, p_saved in zip(parameter_list_grad, parameters_saved):
+                        p.data = p_saved
                 val_metrics = self._model.get_metrics(reset=True)
                 val_metrics["loss"] = float(val_loss / batch_num)
                 message_template = "Training %s : %3f    Validation %s : %3f "
@@ -231,8 +249,12 @@ class Trainer:
                     is_best_so_far = this_epoch == min(validation_metric_per_epoch)
                 else:
                     is_best_so_far = this_epoch == max(validation_metric_per_epoch)
+                if not is_best_so_far:
+                    for param_group in self._optimizer.param_groups:
+                        param_group['lr'] *= 0.5
+
                 if self._serialization_dir:
-                    self._save_checkpoint(epoch, is_best=is_best_so_far)
+                    self._save_checkpoint(epoch, is_best=is_best_so_far, parameters_average=parameters_average)
             else:
                 message_template = "Training %s : %3f "
                 for name, value in metrics.items():
@@ -248,7 +270,8 @@ class Trainer:
 
     def _save_checkpoint(self,
                          epoch: int,
-                         is_best: Optional[bool] = None) -> None:
+                         is_best: Optional[bool] = None,
+                         parameters_average = None) -> None:
         """
         Parameters
         ----------
@@ -266,6 +289,10 @@ class Trainer:
         training_state = {'epoch': epoch, 'optimizer': self._optimizer.state_dict()}
         torch.save(training_state, os.path.join(self._serialization_dir,
                                                 "training_state_epoch_{}.th".format(epoch)))
+        if parameters_average is not None:
+            torch.save({'parameters_average': parameters_average},
+                       os.path.join(self._serialization_dir, "parameters_average_epoch_{}.th".format(epoch)))
+
         if is_best:
             logger.info("Best validation performance so far. "
                         "Copying weights to %s/best.th'.", self._serialization_dir)
