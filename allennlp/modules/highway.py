@@ -38,6 +38,7 @@ class Highway(torch.nn.Module):
             # setting the bias on `B(x)` to be positive, because that means `g` will be biased to
             # be high, to we will carry the input forward.  The bias on `B(x)` is the second half
             # of the bias vector in each Linear layer.
+            layer.bias[:input_dim].data.fill_(0)
             layer.bias[input_dim:].data.fill_(1)
 
     @overrides
