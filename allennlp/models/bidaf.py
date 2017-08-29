@@ -139,7 +139,8 @@ class BidirectionalAttentionFlow(Model):
             A scalar loss to be optimised.
 
         """
-        embedded_question = self._highway_layer(self._text_field_embedder(question))
+        raw_embedded_question = self._text_field_embedder(question)
+        embedded_question = self._highway_layer(raw_embedded_question)
         embedded_passage = self._highway_layer(self._text_field_embedder(passage))
         batch_size = embedded_question.size(0)
         passage_length = embedded_passage.size(1)
@@ -226,6 +227,30 @@ class BidirectionalAttentionFlow(Model):
             self._span_accuracy(best_span, torch.stack([span_start, span_end], -1))
             output_dict["loss"] = loss
 
+        if True:  # verbose
+            verbose_dict = {
+                "raw_embedded_question": raw_embedded_question,
+                "embedded_question": embedded_question,
+                "embedded_passage": embedded_passage,
+                "batch_size": batch_size,
+                "passage_length": passage_length,
+                "encoded_question": encoded_question,
+                "encoded_passage": encoded_passage,
+                "question_mask": question_mask,
+                "passage_mask": passage_mask,
+                "passage_question_similarity": passage_question_similarity,
+                "passage_question_attention": passage_question_attention,
+                "passage_question_vectors": passage_question_vectors,
+                "masked_similarity": masked_similarity,
+                "question_passage_similarity": question_passage_similarity,
+                "question_passage_attention": question_passage_attention,
+                "question_passage_vector": question_passage_vector,
+                "tiled_question_passage_vector": tiled_question_passage_vector,
+                "final_merged_passage": final_merged_passage
+            }
+            output_dict.update(verbose_dict)
+
+
         return output_dict
 
     def get_metrics(self, reset: bool = False) -> Dict[str, float]:
@@ -271,6 +296,7 @@ class BidirectionalAttentionFlow(Model):
                 "span_start_probs": output_dict["span_start_probs"].data.squeeze(0).numpy(),
                 "span_end_probs": output_dict["span_end_probs"].data.squeeze(0).numpy(),
                 "best_span": tuple(best_span.data.squeeze(0).numpy()),
+                "debug": output_dict
                 }
 
     @staticmethod
