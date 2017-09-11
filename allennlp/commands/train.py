@@ -174,22 +174,24 @@ def train_model(params: Params, serialization_dir: str, restore=False, expand_vo
     if restore:
         logger.info("Restoring vocabulary from saved model")
         vocab = Vocabulary.from_files(os.path.join(serialization_dir, "vocabulary"))
-        if expand_vocabulary:
-            vocab_new = Vocabulary.from_params(params.pop("vocabulary", {}), combined_data)
-            vocab_size_old = vocab.get_vocab_size("tokens")
-            for i in range(0, vocab_new.get_vocab_size("tokens")):
-                vocab.add_token_to_namespace(vocab_new.get_token_from_index(i), "tokens")
-            vocab_size_new = vocab.get_vocab_size("tokens")
-            if (vocab_size_new > vocab_size_old):
-                logger.info("Adding %d new tokens to vocabulary", vocab_size_new - vocab_size_old)
-                params_tfe = params.get("model").get("text_field_embedder").get("tokens")
-                vocab.save_to_files(os.path.join(serialization_dir, "vocabulary_new"))
 
     else:
         vocab = Vocabulary.from_params(params.pop("vocabulary", {}), combined_data)
         vocab.save_to_files(os.path.join(serialization_dir, "vocabulary"))
 
     model = Model.from_params(vocab, params.pop('model'))
+
+    if restore and expand_vocabulary:
+        vocab_new = Vocabulary.from_params(params.pop("vocabulary", {}), combined_data)
+        vocab_size_old = vocab.get_vocab_size("tokens")
+        for i in range(0, vocab_new.get_vocab_size("tokens")):
+            vocab.add_token_to_namespace(vocab_new.get_token_from_index(i), "tokens")
+        vocab_size_new = vocab.get_vocab_size("tokens")
+        if (vocab_size_new > vocab_size_old):
+            logger.info("Adding %d new tokens to vocabulary", vocab_size_new - vocab_size_old)
+            params_tfe = params.get("model").get("text_field_embedder").get("tokens")
+            vocab.save_to_files(os.path.join(serialization_dir, "vocabulary_new"))
+
     iterator = DataIterator.from_params(params.pop("iterator"))
 
     train_data.index_instances(vocab)
