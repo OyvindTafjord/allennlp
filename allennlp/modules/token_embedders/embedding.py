@@ -124,6 +124,22 @@ class Embedding(TokenEmbedder):
             embedded = projection(embedded)
         return embedded
 
+    def extend_vocab(self, vocab: Vocabulary, params):
+        pretrained_file = params.pop("pretrained_file", None)
+        vocab_namespace = params.pop("vocab_namespace", "tokens")
+        embedding_dim = params.pop('embedding_dim')
+        skip_vocab_size = self.num_embeddings
+        if skip_vocab_size < vocab.get_vocab_size("tokens"):
+            logger.info("Increasing embedding matrix by %d tokens",
+                        vocab.get_vocab_size("tokens") - skip_vocab_size)
+            weight_new = _read_pretrained_embedding_file(pretrained_file,
+                                                          embedding_dim,
+                                                          vocab,
+                                                          vocab_namespace,
+                                                          skip_vocab_size)
+            self.weight.data = torch.cat([self.weight.data, weight_new])
+
+
     @classmethod
     def from_params(cls, vocab: Vocabulary, params: Params) -> 'Embedding':
         """
@@ -174,7 +190,8 @@ class Embedding(TokenEmbedder):
 def _read_pretrained_embedding_file(embeddings_filename: str,
                                     embedding_dim: int,
                                     vocab: Vocabulary,
-                                    namespace: str = "tokens") -> torch.FloatTensor:
+                                    namespace: str = "tokens",
+                                    skip_vocab_size: int = 0) -> torch.FloatTensor:
     """
     Reads a pre-trained embedding file and generates an Embedding layer that has weights
     initialized to the pre-trained embeddings.  The Embedding layer can either be trainable or
@@ -231,22 +248,25 @@ def _read_pretrained_embedding_file(embeddings_filename: str,
                                  "misspecified your embedding_dim parameter, or didn't "
                                  "pre-populate your Vocabulary")
 
+    if vocab_size < skip_vocab_size:
+        raise ConfigurationError("Cannot extend to smaller vocabulary!")
     all_embeddings = numpy.asarray(list(embeddings.values()))
     embeddings_mean = float(numpy.mean(all_embeddings))
     embeddings_std = float(numpy.std(all_embeddings))
     # Now we initialize the weight matrix for an embedding layer, starting with random vectors,
     # then filling in the word vectors we just read.
     logger.info("Initializing pre-trained embedding layer")
-    embedding_matrix = torch.FloatTensor(vocab_size, embedding_dim).normal_(embeddings_mean,
-                                                                            embeddings_std)
+    embedding_matrix = torch.FloatTensor(vocab_size - skip_vocab_size,
+                                         embedding_dim).normal_(embeddings_mean,
+                                                                embeddings_std)
 
-    for i in range(0, vocab_size):
+    for i in range(skip_vocab_size, vocab_size):
         word = vocab.get_token_from_index(i, namespace)
 
         # If we don't have a pre-trained vector for this word, we'll just leave this row alone,
         # so the word has a random initialization.
         if word in embeddings:
-            embedding_matrix[i] = torch.FloatTensor(embeddings[word])
+            embedding_matrix[i - skip_vocab_size] = torch.FloatTensor(embeddings[word])
         else:
             logger.debug("Word %s was not found in the embedding file. Initialising randomly.", word)
 

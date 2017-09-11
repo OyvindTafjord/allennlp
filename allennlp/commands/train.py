@@ -54,6 +54,12 @@ def add_subparser(parser: argparse._SubParsersAction) -> argparse.ArgumentParser
                            type=str,
                            required=True,
                            help='directory in which to save the model and its logs')
+    subparser.add_argument('--restore',
+                           action='store_true',
+                           help='restore from checkpoint')
+    subparser.add_argument('--expand_vocabulary',
+                           action='store_true',
+                           help='expand vocabulary when restoring from checkpoint')
     subparser.set_defaults(func=_train_model_from_args)
 
     return subparser
@@ -94,10 +100,10 @@ def _train_model_from_args(args: argparse.Namespace):
     """
     Just converts from an ``argparse.Namespace`` object to string paths.
     """
-    train_model_from_file(args.param_path, args.serialization_dir)
+    train_model_from_file(args.param_path, args.serialization_dir, args.restore, args.expand_vocabulary)
 
 
-def train_model_from_file(parameter_filename: str, serialization_dir: str) -> Model:
+def train_model_from_file(parameter_filename: str, serialization_dir: str, restore=False, expand_vocabulary=False) -> Model:
     """
     A wrapper around :func:`train_model` which loads the params from a file.
 
@@ -113,10 +119,10 @@ def train_model_from_file(parameter_filename: str, serialization_dir: str) -> Mo
 
     # Load the experiment config from a file and pass it to ``train_model``.
     params = Params.from_file(parameter_filename)
-    return train_model(params, serialization_dir)
+    return train_model(params, serialization_dir, restore, expand_vocabulary)
 
 
-def train_model(params: Params, serialization_dir: str) -> Model:
+def train_model(params: Params, serialization_dir: str, restore=False, expand_vocabulary=False) -> Model:
     """
     This function can be used as an entry point to running models in AllenNLP
     directly from a JSON specification using a :class:`Driver`. Note that if
@@ -163,8 +169,25 @@ def train_model(params: Params, serialization_dir: str) -> Model:
         validation_data = None
         combined_data = train_data
 
-    vocab = Vocabulary.from_params(params.pop("vocabulary", {}), combined_data)
-    vocab.save_to_files(os.path.join(serialization_dir, "vocabulary"))
+    params_tfe = None
+
+    if restore:
+        logger.info("Restoring vocabulary from saved model")
+        vocab = Vocabulary.from_files(os.path.join(serialization_dir, "vocabulary"))
+        if expand_vocabulary:
+            vocab_new = Vocabulary.from_params(params.pop("vocabulary", {}), combined_data)
+            vocab_size_old = vocab.get_vocab_size("tokens")
+            for i in range(0, vocab_new.get_vocab_size("tokens")):
+                vocab.add_token_to_namespace(vocab_new.get_token_from_index(i), "tokens")
+            vocab_size_new = vocab.get_vocab_size("tokens")
+            if (vocab_size_new > vocab_size_old):
+                logger.info("Adding %d new tokens to vocabulary", vocab_size_new - vocab_size_old)
+                params_tfe = params.get("model").get("text_field_embedder").get("tokens")
+                vocab.save_to_files(os.path.join(serialization_dir, "vocabulary_new"))
+
+    else:
+        vocab = Vocabulary.from_params(params.pop("vocabulary", {}), combined_data)
+        vocab.save_to_files(os.path.join(serialization_dir, "vocabulary"))
 
     model = Model.from_params(vocab, params.pop('model'))
     iterator = DataIterator.from_params(params.pop("iterator"))
@@ -181,6 +204,7 @@ def train_model(params: Params, serialization_dir: str) -> Model:
                                   validation_data,
                                   trainer_params)
     params.assert_empty('base train command')
+    trainer._params_tfe = params_tfe
     trainer.train()
 
     # Now tar up results
