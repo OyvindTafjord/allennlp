@@ -29,7 +29,7 @@ import logging
 import torch
 import tqdm
 
-from allennlp.data import Dataset
+from allennlp.data import Dataset, Vocabulary
 from allennlp.data.dataset_readers.dataset_reader import DatasetReader
 from allennlp.data.iterators import DataIterator
 from allennlp.models.archival import load_archive
@@ -59,6 +59,9 @@ def add_subparser(parser: argparse._SubParsersAction) -> argparse.ArgumentParser
                            type=str,
                            required=False,
                            help='output file for raw evaluation results')
+    subparser.add_argument('--expand_vocabulary',
+                           action='store_true',
+                           help='expand vocabulary to include new words in evaluation data')
 
     subparser.set_defaults(func=evaluate_from_args)
 
@@ -122,6 +125,18 @@ def evaluate_from_args(args: argparse.Namespace) -> Dict[str, Any]:
     logger.info("Reading evaluation data from %s", evaluation_data_path)
     dataset = dataset_reader.read(evaluation_data_path)
     dataset.index_instances(model.vocab)
+
+    if args.expand_vocabulary:
+        vocab_new = Vocabulary.from_params(config.get("vocabulary", {}), dataset)
+        vocab_size_old = model.vocab.get_vocab_size("tokens")
+        for i in range(0, vocab_new.get_vocab_size("tokens")):
+            model.vocab.add_token_to_namespace(vocab_new.get_token_from_index(i), "tokens")
+        vocab_size_new = model.vocab.get_vocab_size("tokens")
+        if vocab_size_new > vocab_size_old:
+            logger.info("Adding %d new tokens to vocabulary", vocab_size_new - vocab_size_old)
+            token_embedder = model._text_field_embedder._token_embedders['tokens']
+            params_tfe = config.get("model").get("text_field_embedder").get("tokens")
+            token_embedder.extend_vocab(model.vocab, params_tfe)
 
     iterator = DataIterator.from_params(config.pop("iterator"))
 
