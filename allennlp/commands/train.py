@@ -174,6 +174,8 @@ def train_model(params: Params, serialization_dir: str, restore=False, expand_vo
     if restore:
         logger.info("Restoring vocabulary from saved model")
         vocab = Vocabulary.from_files(os.path.join(serialization_dir, "vocabulary"))
+        if expand_vocabulary:
+            params_tfe = deepcopy(params).get("model").get("text_field_embedder").get("tokens")
 
     else:
         vocab = Vocabulary.from_params(params.pop("vocabulary", {}), combined_data)
@@ -189,8 +191,10 @@ def train_model(params: Params, serialization_dir: str, restore=False, expand_vo
         vocab_size_new = vocab.get_vocab_size("tokens")
         if (vocab_size_new > vocab_size_old):
             logger.info("Adding %d new tokens to vocabulary", vocab_size_new - vocab_size_old)
-            params_tfe = params.get("model").get("text_field_embedder").get("tokens")
             vocab.save_to_files(os.path.join(serialization_dir, "vocabulary_new"))
+            model.vocab = vocab
+        else:
+            params_tfe = None
 
     iterator = DataIterator.from_params(params.pop("iterator"))
 

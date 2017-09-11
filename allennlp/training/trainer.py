@@ -340,8 +340,7 @@ class Trainer:
         training_state = torch.load(training_state_path)
         self._model.load_state_dict(model_state)
         self._optimizer.load_state_dict(training_state["optimizer"])
-
-        if hasattr(self, "_params_tfe") and self._params_tfe:
+        if hasattr(self, "_params_tfe") and self._params_tfe is not None:
             token_embedder = self._model._text_field_embedder._token_embedders['tokens']
             token_embedder.extend_vocab(self._model.vocab, self._params_tfe)
 

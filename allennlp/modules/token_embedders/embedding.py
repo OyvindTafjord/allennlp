@@ -137,7 +137,8 @@ class Embedding(TokenEmbedder):
                                                           vocab,
                                                           vocab_namespace,
                                                           skip_vocab_size)
-            self.weight.data = torch.cat([self.weight.data, weight_new])
+            # TODO: Better cuda check here
+            self.weight.data = torch.cat([self.weight.data, weight_new.cuda(0)])
 
 
     @classmethod
