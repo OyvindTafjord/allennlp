@@ -29,6 +29,7 @@ import logging
 import torch
 import tqdm
 
+from allennlp.commands.train import prepare_environment
 from allennlp.data import Dataset, Vocabulary
 from allennlp.data.dataset_readers.dataset_reader import DatasetReader
 from allennlp.data.iterators import DataIterator
@@ -118,6 +119,8 @@ def evaluate_from_args(args: argparse.Namespace) -> Dict[str, Any]:
     config = archive.config
     model = archive.model
     model.eval()
+
+    prepare_environment(config)
 
     # Load the evaluation data
     dataset_reader = DatasetReader.from_params(config.pop('dataset_reader'))
