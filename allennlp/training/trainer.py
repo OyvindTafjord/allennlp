@@ -136,6 +136,7 @@ class Trainer:
                     for x in os.listdir(self._serialization_dir)]):
                 logger.info("Loading model from checkpoint.")
                 epoch_counter = self._restore_checkpoint()
+                epoch_counter += 1  # To not overwrite existing check point!
 
         if self._grad_clipping is not None:
             # Pylint is unable to tell that we're in the case that _glad_clipping is not None...
