@@ -264,6 +264,8 @@ class BidirectionalAttentionFlowNoSpan(Model):
             span_indices = torch.LongTensor([self._get_span_index(start, end, passage_length)
                        for start, end in zip(span_start, span_end)])
             span_indices_var = torch.autograd.Variable(span_indices)
+            if span_start.is_cuda:
+                span_indices_var = span_indices_var.cuda()
 
             # spans = torch.zeros([batch_size, passage_length * passage_length + 1])
             # spans.scatter_(1, torch.LongTensor(span_indices), 1)
@@ -281,7 +283,7 @@ class BidirectionalAttentionFlowNoSpan(Model):
             loss = nll_loss(torch.nn.functional.log_softmax(span_logits), span_indices_var.squeeze(-1))
             self._span_start_accuracy(span_start_logits, span_start.squeeze(-1))
             self._span_end_accuracy(span_end_logits, span_end.squeeze(-1))
-            self._span_full_accuracy(span_logits, span_indices.squeeze(-1))
+            self._span_full_accuracy(span_logits, span_indices_var.squeeze(-1))
             self._span_accuracy(best_span, torch.stack([span_start, span_end], -1))
             output_dict["loss"] = loss
         if metadata is not None:
@@ -349,8 +351,8 @@ class BidirectionalAttentionFlowNoSpan(Model):
 
     @staticmethod
     def _get_span_index(span_start, span_end, passage_length):
-        start = span_start.data.numpy()
-        end = span_end.data.numpy()
+        start = span_start.data.cpu().numpy()
+        end = span_end.data.cpu().numpy()
         # Ugly, probably a better way to handle this
         if start < 0:
             return [0]
