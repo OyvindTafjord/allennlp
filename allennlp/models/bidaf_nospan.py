@@ -269,8 +269,8 @@ class BidirectionalAttentionFlowNoSpan(Model):
             # spans.scatter_(1, torch.LongTensor(span_indices), 1)
             nospan_logits = torch.autograd.Variable(torch.zeros(batch_size).fill_(-10.0))
 
-            span_logits = (util.replace_masked_values(span_start_logits, passage_mask, -1e7) +
-                           util.replace_masked_values(span_end_logits, passage_mask, -1e7))
+            span_logits = (util.replace_masked_values(span_start_logits, passage_mask, -1e7).unsqueeze(2) +
+                        util.replace_masked_values(span_end_logits, passage_mask, -1e7).unsqueeze(1))
             #span_logits = [torch.triu(m).view([passage_length * passage_length])
             span_logits = [m.view([passage_length * passage_length])
                            for m in span_logits]
