@@ -418,5 +418,5 @@ def replace_triu_(tensor: torch.Tensor, value: float, k: int = 0) -> torch.Tenso
         replace_triu_(tensor.data, value, k)
         return tensor
     offset = torch.tril(tensor.clone().fill_(value), k - 1)
-    tensor.copy_(torch.triu(tensor, k) + offset)
+    tensor.copy_(torch.triu(tensor.clone(), k) + offset)
     return tensor
