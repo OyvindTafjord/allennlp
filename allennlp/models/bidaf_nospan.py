@@ -270,11 +270,12 @@ class BidirectionalAttentionFlowNoSpan(Model):
             if span_start.is_cuda:
                 nospan_logits = nospan_logits.cuda()
 
-
             span_logits = (span_start_logits.unsqueeze(2) + span_end_logits.unsqueeze(1))
-            span_logits = [util.replace_triu_(m, -2e7).view([passage_length * passage_length])
-                           for m in span_logits]
-            span_logits = torch.stack(span_logits)
+            invalid_span_mask = Variable(torch.triu(torch.Tensor(passage_length, passage_length).fill_(1)))
+            invalid_span_mask = invalid_span_mask.unsqueeze(0).expand(batch_size, passage_length,
+                                                                      passage_length)
+            span_logits = util.replace_masked_values(span_logits, invalid_span_mask, -2e7)
+            span_logits = span_logits.view(batch_size, passage_length * passage_length)
             span_logits = torch.cat([nospan_logits.unsqueeze(-1), span_logits], 1)
 
             loss = nll_loss(torch.nn.functional.log_softmax(span_logits), span_indices.squeeze(-1))
