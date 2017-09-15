@@ -261,29 +261,26 @@ class BidirectionalAttentionFlowNoSpan(Model):
                        "span_end_probs": span_end_probs,
                        "best_span": best_span}
         if span_start is not None:
-            span_indices = torch.LongTensor([self._get_span_index(start, end, passage_length)
-                       for start, end in zip(span_start, span_end)])
-            span_indices_var = torch.autograd.Variable(span_indices)
-            if span_start.is_cuda:
-                span_indices_var = span_indices_var.cuda()
+            # The semantics is that no span has span_start = 0 and span_end = -1, mapping to
+            # the special span index of 0.
+            span_indices = span_start * passage_length + span_end + 1
 
-            # spans = torch.zeros([batch_size, passage_length * passage_length + 1])
-            # spans.scatter_(1, torch.LongTensor(span_indices), 1)
+            # placeholder for testing
             nospan_logits = torch.autograd.Variable(torch.zeros(batch_size).fill_(-10.0))
+            if span_start.is_cuda:
+                nospan_logits = nospan_logits.cuda()
 
-            span_logits = (util.replace_masked_values(span_start_logits, passage_mask, -1e7).unsqueeze(2) +
-                        util.replace_masked_values(span_end_logits, passage_mask, -1e7).unsqueeze(1))
-            #span_logits = [torch.triu(m).view([passage_length * passage_length])
-            span_logits = [m.view([passage_length * passage_length])
+
+            span_logits = (span_start_logits.unsqueeze(2) + span_end_logits.unsqueeze(1))
+            span_logits = [util.replace_triu_(m, -2e7).view([passage_length * passage_length])
                            for m in span_logits]
             span_logits = torch.stack(span_logits)
-            # span_logits = torch.cat([nospan_logits.unsqueeze(-1), span_logits], 1)
-            # loss = nll_loss(util.masked_log_softmax(span_start_logits, passage_mask), span_start.squeeze(-1))
+            span_logits = torch.cat([nospan_logits.unsqueeze(-1), span_logits], 1)
 
-            loss = nll_loss(torch.nn.functional.log_softmax(span_logits), span_indices_var.squeeze(-1))
+            loss = nll_loss(torch.nn.functional.log_softmax(span_logits), span_indices.squeeze(-1))
             self._span_start_accuracy(span_start_logits, span_start.squeeze(-1))
             self._span_end_accuracy(span_end_logits, span_end.squeeze(-1))
-            self._span_full_accuracy(span_logits, span_indices_var.squeeze(-1))
+            self._span_full_accuracy(span_logits, span_indices.squeeze(-1))
             self._span_accuracy(best_span, torch.stack([span_start, span_end], -1))
             output_dict["loss"] = loss
         if metadata is not None:
@@ -348,15 +345,6 @@ class BidirectionalAttentionFlowNoSpan(Model):
                     best_word_span[b, 1] = j
                     max_span_log_prob[b] = val1 + val2
         return best_word_span
-
-    @staticmethod
-    def _get_span_index(span_start, span_end, passage_length):
-        start = span_start.data.cpu().numpy()
-        end = span_end.data.cpu().numpy()
-        # Ugly, probably a better way to handle this
-        if start < 0:
-            return [0]
-        return [int(start + end * passage_length)]
 
     @classmethod
     def from_params(cls, vocab: Vocabulary, params: Params) -> 'BidirectionalAttentionFlowNoSpan':

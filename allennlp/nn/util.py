@@ -408,3 +408,15 @@ def ones_like(tensor: torch.Tensor) -> torch.Tensor:
     device at runtime.
     """
     return tensor.clone().fill_(1)
+
+
+def replace_triu_(tensor: torch.Tensor, value: float, k: int = 0) -> torch.Tensor:
+    """
+    Keep upper triangular part of tensor, replacing lower part with a value
+    """
+    if isinstance(tensor, Variable):
+        tensor.data = replace_triu_(tensor.data, value, k)
+        return tensor
+    offset = torch.tril(tensor.clone().fill_(value), k - 1)
+    tensor = torch.triu(tensor, k) + offset
+    return tensor
