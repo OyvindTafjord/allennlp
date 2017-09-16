@@ -63,7 +63,8 @@ class CnnEncoder(Seq2VecEncoder):
 
         self._convolution_layers = [Conv1d(in_channels=self._embedding_dim,
                                            out_channels=self._num_filters,
-                                           kernel_size=ngram_size)
+                                           kernel_size=ngram_size,
+                                           padding=ngram_size)
                                     for ngram_size in self._ngram_filter_sizes]
         for i, conv_layer in enumerate(self._convolution_layers):
             self.add_module('conv_layer_%d' % i, conv_layer)
