@@ -174,7 +174,11 @@ class SquadReader(DatasetReader):
         fields['passage'] = passage_field
         fields['question'] = TextField(question_tokens, self._token_indexers)
 
-        if answer_text:
+        if answer_text == "" and char_span_start == 0:
+            # Special case of no answer
+            fields['span_start'] = IndexField(0, passage_field)
+            fields['span_end'] = IndexField(-1, passage_field)
+        elif answer_text:
             # SQuAD gives answer annotations as a character index into the paragraph, but we need a
             # token index for our models.  We convert them here.
             char_span_end = char_span_start + len(answer_text)

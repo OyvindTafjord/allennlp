@@ -87,6 +87,7 @@ class BidirectionalAttentionFlowNoSpan(Model):
         span_end_encoding_dim = span_end_encoder.get_output_dim()
         span_end_input_dim = encoding_dim * 4 + span_end_encoding_dim
         self._span_end_predictor = TimeDistributed(torch.nn.Linear(span_end_input_dim, 1))
+        self._nospan_predictor = torch.nn.Linear(modeling_dim, 1)
         initializer(self)
 
         # Bidaf has lots of layer dimensions which need to match up - these
@@ -255,6 +256,9 @@ class BidirectionalAttentionFlowNoSpan(Model):
         span_end_logits = util.replace_masked_values(span_end_logits, passage_mask, -1e7)
         best_span = self._get_best_span(span_start_logits, span_end_logits)
 
+        modeled_passage_vector = modeled_passage.max(dim=1)[0]
+        nospan_logits = self._nospan_predictor(modeled_passage_vector)
+
         output_dict = {"span_start_logits": span_start_logits,
                        "span_start_probs": span_start_probs,
                        "span_end_logits": span_end_logits,
@@ -266,9 +270,9 @@ class BidirectionalAttentionFlowNoSpan(Model):
             span_indices = span_start * passage_length + span_end + 1
 
             # placeholder for testing
-            nospan_logits = torch.autograd.Variable(torch.zeros(batch_size).fill_(-10.0))
-            if span_start.is_cuda:
-                nospan_logits = nospan_logits.cuda()
+            #nospan_logits = torch.autograd.Variable(torch.zeros(batch_size).fill_(-10.0))
+            #if span_start.is_cuda:
+            #    nospan_logits = nospan_logits.cuda()
 
             span_logits = (span_start_logits.unsqueeze(2) + span_end_logits.unsqueeze(1))
             invalid_span_mask = Variable(torch.triu(torch.Tensor(passage_length, passage_length).fill_(1)))
@@ -278,7 +282,7 @@ class BidirectionalAttentionFlowNoSpan(Model):
                                                                       passage_length)
             span_logits = util.replace_masked_values(span_logits, invalid_span_mask, -2e7)
             span_logits = span_logits.view(batch_size, passage_length * passage_length)
-            span_logits = torch.cat([nospan_logits.unsqueeze(-1), span_logits], 1)
+            span_logits = torch.cat([nospan_logits, span_logits], 1)
 
             loss = nll_loss(torch.nn.functional.log_softmax(span_logits), span_indices.squeeze(-1))
             self._span_start_accuracy(span_start_logits, span_start.squeeze(-1))
