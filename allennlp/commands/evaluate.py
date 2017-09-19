@@ -23,12 +23,14 @@ and report any metrics calculated by the model.
 """
 from typing import Dict, Any
 import argparse
+import json
 import logging
 
+import torch
 import tqdm
 
 from allennlp.common.util import prepare_environment
-from allennlp.data import Dataset
+from allennlp.data import Dataset, Vocabulary
 from allennlp.data.dataset_readers.dataset_reader import DatasetReader
 from allennlp.data.iterators import DataIterator
 from allennlp.models.archival import load_archive
@@ -54,6 +56,13 @@ def add_subparser(parser: argparse._SubParsersAction) -> argparse.ArgumentParser
                            type=int,
                            default=-1,
                            help='id of GPU to use (if any)')
+    subparser.add_argument('--output_file',
+                           type=str,
+                           required=False,
+                           help='output file for raw evaluation results')
+    subparser.add_argument('--expand_vocabulary',
+                           action='store_true',
+                           help='expand vocabulary to include new words in evaluation data')
 
     subparser.set_defaults(func=evaluate_from_args)
 
@@ -63,18 +72,38 @@ def add_subparser(parser: argparse._SubParsersAction) -> argparse.ArgumentParser
 def evaluate(model: Model,
              dataset: Dataset,
              iterator: DataIterator,
-             cuda_device: int) -> Dict[str, Any]:
+             cuda_device: int,
+             output_file: str = None) -> Dict[str, Any]:
     model.eval()
 
     generator = iterator(dataset, num_epochs=1)
     logger.info("Iterating over dataset")
     generator_tqdm = tqdm.tqdm(generator, total=iterator.get_num_batches(dataset))
+    file_handle = None
+    if output_file:
+        file_handle =  open(output_file, 'w')
     for batch in generator_tqdm:
         tensor_batch = arrays_to_variables(batch, cuda_device, for_training=False)
-        model.forward(**tensor_batch)
+        model_output = model.forward(**tensor_batch)
         metrics = model.get_metrics()
+        if file_handle:
+            metadata = tensor_batch.get("metadata")
+            if metadata:
+                batch_size = len(metadata)
+                for index, meta in enumerate(metadata):
+                    res = {}
+                    res["question_id"] = meta["question_id"]
+                    for key, value in model_output.items():
+                        if len(value) == batch_size and not isinstance(value, torch.autograd.Variable):
+                            val = value[index]
+                            res[key] = val
+                    file_handle.write(json.dumps(res))
+                    file_handle.write("\n")
+
         description = ', '.join(["%s: %.2f" % (name, value) for name, value in metrics.items()]) + " ||"
         generator_tqdm.set_description(description)
+    if file_handle:
+        file_handle.close()
 
     return model.get_metrics()
 
@@ -92,6 +121,8 @@ def evaluate_from_args(args: argparse.Namespace) -> Dict[str, Any]:
     model = archive.model
     model.eval()
 
+    prepare_environment(config)
+
     # Load the evaluation data
     dataset_reader = DatasetReader.from_params(config.pop('dataset_reader'))
     evaluation_data_path = args.evaluation_data_file
@@ -99,9 +130,21 @@ def evaluate_from_args(args: argparse.Namespace) -> Dict[str, Any]:
     dataset = dataset_reader.read(evaluation_data_path)
     dataset.index_instances(model.vocab)
 
+    if args.expand_vocabulary:
+        vocab_new = Vocabulary.from_params(config.get("vocabulary", {}), dataset)
+        vocab_size_old = model.vocab.get_vocab_size("tokens")
+        for i in range(0, vocab_new.get_vocab_size("tokens")):
+            model.vocab.add_token_to_namespace(vocab_new.get_token_from_index(i), "tokens")
+        vocab_size_new = model.vocab.get_vocab_size("tokens")
+        if vocab_size_new > vocab_size_old:
+            logger.info("Adding %d new tokens to vocabulary", vocab_size_new - vocab_size_old)
+            token_embedder = model._text_field_embedder._token_embedders['tokens']
+            params_tfe = config.get("model").get("text_field_embedder").get("tokens")
+            token_embedder.extend_vocab(model.vocab, params_tfe)
+
     iterator = DataIterator.from_params(config.pop("iterator"))
 
-    metrics = evaluate(model, dataset, iterator, args.cuda_device)
+    metrics = evaluate(model, dataset, iterator, args.cuda_device, args.output_file)
 
     logger.info("Finished evaluating.")
     logger.info("Metrics:")
