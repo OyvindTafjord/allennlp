@@ -286,7 +286,7 @@ class BidirectionalAttentionFlowNoSpan(Model):
 
             loss = nll_loss(torch.nn.functional.log_softmax(span_logits), span_indices.squeeze(-1))
             self._span_start_accuracy(span_start_logits, span_start.squeeze(-1))
-            self._span_end_accuracy(span_end_logits, span_end.squeeze(-1))
+            self._span_end_accuracy(span_end_logits, span_end.squeeze(-1).clamp(min=0))
             self._span_full_accuracy(span_logits, span_indices.squeeze(-1))
             self._span_accuracy(best_span, torch.stack([span_start, span_end], -1))
             output_dict["loss"] = loss
