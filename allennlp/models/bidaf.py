@@ -274,17 +274,27 @@ class BidirectionalAttentionFlow(Model):
             output_dict["loss"] = loss
         if metadata is not None:
             output_dict['best_span_str'] = []
+            output_dict['best_span_offsets'] = []
+            output_dict['exact_match'] = []
+            output_dict['f1_score'] = []
+            output_dict['confidence'] = []
             for i in range(batch_size):
                 passage_str = metadata[i]['original_passage']
                 offsets = metadata[i]['token_offsets']
                 predicted_span = tuple(best_span[i].data.cpu().numpy())
                 start_offset = offsets[predicted_span[0]][0]
                 end_offset = offsets[predicted_span[1]][1]
+                output_dict['best_span_offsets'].append([start_offset, end_offset])
+                confidence = (span_start_probs[i].data.cpu().numpy().tolist()[predicted_span[0]] *
+                              span_end_probs[i].data.cpu().numpy().tolist()[predicted_span[1]])
+                output_dict['confidence'].append(confidence)
                 best_span_string = passage_str[start_offset:end_offset]
                 output_dict['best_span_str'].append(best_span_string)
                 answer_texts = metadata[i].get('answer_texts', [])
                 if answer_texts:
-                    self._squad_metrics(best_span_string, answer_texts)
+                    exact_match, f1_score = self._squad_metrics(best_span_string, answer_texts)
+                output_dict['exact_match'].append(exact_match)
+                output_dict['f1_score'].append(f1_score)
         return output_dict
 
     def get_metrics(self, reset: bool = False) -> Dict[str, float]:

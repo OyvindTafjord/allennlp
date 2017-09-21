@@ -136,6 +136,7 @@ class Trainer:
                     for x in os.listdir(self._serialization_dir)]):
                 logger.info("Loading model from checkpoint.")
                 epoch_counter = self._restore_checkpoint()
+                epoch_counter += 1  # To not overwrite existing check point!
 
         if self._grad_clipping is not None:
             # Pylint is unable to tell that we're in the case that _glad_clipping is not None...
@@ -341,6 +342,10 @@ class Trainer:
         training_state = torch.load(training_state_path)
         self._model.load_state_dict(model_state)
         self._optimizer.load_state_dict(training_state["optimizer"])
+        if hasattr(self, "_params_tfe") and self._params_tfe is not None:
+            token_embedder = self._model._text_field_embedder._token_embedders['tokens']
+            token_embedder.extend_vocab(self._model.vocab, self._params_tfe)
+
         return training_state["epoch"] + 1
 
     @classmethod
