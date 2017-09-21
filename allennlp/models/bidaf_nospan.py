@@ -292,13 +292,20 @@ class BidirectionalAttentionFlowNoSpan(Model):
             output_dict["loss"] = loss
         if metadata is not None:
             output_dict['best_span_str'] = []
+            _, best_span_index = span_logits.max(1)
+            best_span_start = (best_span_index-1).div(passage_length)
+            best_span_end = (best_span_index-1).fmod(passage_length)
             for i in range(batch_size):
                 passage_str = metadata[i]['original_passage']
                 offsets = metadata[i]['token_offsets']
+
                 predicted_span = tuple(best_span[i].data.cpu().numpy())
-                start_offset = offsets[predicted_span[0]][0]
-                end_offset = offsets[predicted_span[1]][1]
-                best_span_string = passage_str[start_offset:end_offset]
+                if best_span_end[i] < 0:
+                    best_span_string = ""
+                else:
+                    start_offset = offsets[best_span_start[i]][0]
+                    end_offset = offsets[best_span_end[i]][1]
+                    best_span_string = passage_str[start_offset:end_offset]
                 output_dict['best_span_str'].append(best_span_string)
                 answer_texts = metadata[i].get('answer_texts', [])
                 exact_match = f1_score = 0
