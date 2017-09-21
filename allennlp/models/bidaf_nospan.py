@@ -292,14 +292,17 @@ class BidirectionalAttentionFlowNoSpan(Model):
             output_dict["loss"] = loss
         if metadata is not None:
             output_dict['best_span_str'] = []
-            _, best_span_index = span_logits.max(1)
-            best_span_start = (best_span_index-1).div(passage_length)
-            best_span_end = (best_span_index-1).fmod(passage_length)
+            output_dict['exact_match'] = []
+            output_dict['f1_score'] = []
+            output_dict['confidence'] = []
+            confidences, best_span_index = span_logits.max(1)
+            confidences = confidences.data.cpu().numpy().tolist()
+            best_span_start = (best_span_index-1).div(passage_length).data.cpu().numpy()
+            best_span_end = (best_span_index-1).fmod(passage_length).data.cpu().numpy()
             for i in range(batch_size):
                 passage_str = metadata[i]['original_passage']
                 offsets = metadata[i]['token_offsets']
 
-                predicted_span = tuple(best_span[i].data.cpu().numpy())
                 if best_span_end[i] < 0:
                     best_span_string = ""
                 else:
@@ -308,6 +311,7 @@ class BidirectionalAttentionFlowNoSpan(Model):
                     best_span_string = passage_str[start_offset:end_offset]
                 output_dict['best_span_str'].append(best_span_string)
                 answer_texts = metadata[i].get('answer_texts', [])
+                output_dict['confidence'].append(confidences[i])
                 exact_match = f1_score = 0
                 if answer_texts:
                     exact_match = squad_eval.metric_max_over_ground_truths(
@@ -318,6 +322,8 @@ class BidirectionalAttentionFlowNoSpan(Model):
                             squad_eval.f1_score,
                             best_span_string,
                             answer_texts)
+                output_dict['exact_match'].append(exact_match)
+                output_dict['f1_score'].append(f1_score)
                 self._official_em(100 * exact_match)
                 self._official_f1(100 * f1_score)
         return output_dict
