@@ -121,8 +121,6 @@ def evaluate_from_args(args: argparse.Namespace) -> Dict[str, Any]:
     model = archive.model
     model.eval()
 
-    prepare_environment(config)
-
     # Load the evaluation data
     dataset_reader = DatasetReader.from_params(config.pop('dataset_reader'))
     evaluation_data_path = args.evaluation_data_file
