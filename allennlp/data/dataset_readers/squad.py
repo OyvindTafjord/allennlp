@@ -140,6 +140,11 @@ class SquadReader(DatasetReader):
                         candidate_answers[(answer["answer_start"], answer["text"])] += 1
                     answer_texts = [answer['text'] for answer in question_answer['answers']]
                     char_span_start, answer_text = candidate_answers.most_common(1)[0][0]
+                    # Encoding a "no answer found" along with the correct answer in the answer text
+                    # is done with a negative answer_start
+                    if char_span_start < 0:
+                        char_span_start = 0
+                        answer_text = ""
 
                     instance = self.text_to_instance(question_text,
                                                      paragraph,
