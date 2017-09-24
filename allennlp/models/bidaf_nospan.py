@@ -299,6 +299,7 @@ class BidirectionalAttentionFlowNoSpan(Model):
             confidences = confidences.data.cpu().numpy().tolist()
             best_span_start = (best_span_index-1).div(passage_length).data.cpu().numpy()
             best_span_end = (best_span_index-1).fmod(passage_length).data.cpu().numpy()
+            span_end_true = span_end.squeeze(-1).data.cpu().numpy()
             for i in range(batch_size):
                 passage_str = metadata[i]['original_passage']
                 offsets = metadata[i]['token_offsets']
@@ -314,6 +315,9 @@ class BidirectionalAttentionFlowNoSpan(Model):
                 output_dict['confidence'].append(confidences[i])
                 exact_match = f1_score = 0
                 if answer_texts:
+                    # Special case for empty answer (but true answer is still in the data)
+                    if span_end_true[i] < 0:
+                        answer_texts = [""]
                     exact_match = squad_eval.metric_max_over_ground_truths(
                             squad_eval.exact_match_score,
                             best_span_string,
