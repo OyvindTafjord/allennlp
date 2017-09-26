@@ -316,7 +316,7 @@ class BidirectionalAttentionFlowNoSpan(Model):
                 exact_match = f1_score = 0
                 if answer_texts:
                     # Special case for empty answer (but true answer is still in the data)
-                    if span_end_true[i] < 0:
+                    if span_end_true[i] < 0 and best_span_string == "":
                         answer_texts = [""]
                     exact_match = squad_eval.metric_max_over_ground_truths(
                             squad_eval.exact_match_score,
