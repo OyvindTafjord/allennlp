@@ -296,7 +296,11 @@ class BidirectionalAttentionFlowNoSpan(Model):
             output_dict['f1_score'] = []
             output_dict['confidence'] = []
             confidences, best_span_index = span_logits.max(1)
+            topk = 5
+            confidences_topk, best_span_index_topk = span_logits.topk(topk, dim=1)
             confidences = confidences.data.cpu().numpy().tolist()
+            confidences_topk = confidences.data.cpu().numpy().tolist()
+            best_span_index_topk = best_span_index_topk.data.cpu().numpy().tolist()
             best_span_start = (best_span_index-1).div(passage_length).data.cpu().numpy()
             best_span_end = (best_span_index-1).fmod(passage_length).data.cpu().numpy()
             span_end_true = span_end.squeeze(-1).data.cpu().numpy()
@@ -313,6 +317,12 @@ class BidirectionalAttentionFlowNoSpan(Model):
                 output_dict['best_span_str'].append(best_span_string)
                 answer_texts = metadata[i].get('answer_texts', [])
                 output_dict['confidence'].append(confidences[i])
+                output_dict['confidene_topk'].append(confidences_topk)
+                best_span_string_topk = [
+                    self.get_span_str(span_index, passage_length, passage_str, offsets)
+                    for span_index in best_span_index_topk[i]
+                ]
+                output_dict['best_span_str_topk'] = best_span_string_topk
                 exact_match = f1_score = 0
                 if answer_texts:
                     # Special case for empty answer (but true answer is still in the data)
@@ -341,6 +351,16 @@ class BidirectionalAttentionFlowNoSpan(Model):
                 'em': self._official_em.get_metric(reset),
                 'f1': self._official_f1.get_metric(reset),
                 }
+
+    @staticmethod
+    def get_span_str(span_index: int, passage_length: int, passage_str: str, offsets) -> str:
+        if span_index < 0:
+            return ""
+        span_start = (span_index-1) // passage_length
+        span_end = (span_index-1) % passage_length
+        start_offset = offsets[span_start][0]
+        end_offset = offsets[span_end][1]
+        return passage_str[start_offset:end_offset]
 
     @staticmethod
     def _get_best_span(span_start_logits: Variable, span_end_logits: Variable) -> Variable:
