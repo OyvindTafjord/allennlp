@@ -285,6 +285,7 @@ class BidirectionalAttentionFlowNoSpan(Model):
             span_logits = torch.cat([nospan_logits, span_logits], 1)
 
             loss = nll_loss(torch.nn.functional.log_softmax(span_logits), span_indices.squeeze(-1))
+            span_probs = util.masked_softmax(span_logits, None)
             self._span_start_accuracy(span_start_logits, span_start.squeeze(-1))
             self._span_end_accuracy(span_end_logits, span_end.squeeze(-1).clamp(min=0))
             self._span_full_accuracy(span_logits, span_indices.squeeze(-1))
@@ -297,9 +298,9 @@ class BidirectionalAttentionFlowNoSpan(Model):
             output_dict['confidence'] = []
             output_dict['confidence_topk'] = []
             output_dict['best_span_str_topk'] = []
-            confidences, best_span_index = span_logits.max(1)
+            confidences, best_span_index = span_probs.max(1)
             topk = 5
-            confidences_topk, best_span_index_topk = span_logits.topk(topk, dim=1)
+            confidences_topk, best_span_index_topk = span_probs.topk(topk, dim=1)
             confidences = confidences.data.cpu().numpy().tolist()
             confidences_topk = confidences_topk.data.cpu().numpy().tolist()
             best_span_index_topk = best_span_index_topk.data.cpu().numpy().tolist()
