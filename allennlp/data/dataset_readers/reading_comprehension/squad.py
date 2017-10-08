@@ -41,8 +41,10 @@ class SquadReader(DatasetReader):
     """
     def __init__(self,
                  tokenizer: Tokenizer = None,
-                 token_indexers: Dict[str, TokenIndexer] = None) -> None:
+                 token_indexers: Dict[str, TokenIndexer] = None,
+                 max_instances: int = -1) -> None:
         self._tokenizer = tokenizer or WordTokenizer()
+        self._max_instances = max_instances
         self._token_indexers = token_indexers or {'tokens': SingleIdTokenIndexer()}
 
     @overrides
@@ -72,6 +74,8 @@ class SquadReader(DatasetReader):
                                                      answer_texts,
                                                      tokenized_paragraph)
                     instances.append(instance)
+                    if self._max_instances > 0 and len(instances) >= self._max_instances:
+                        return Dataset(instances)
         if not instances:
             raise ConfigurationError("No instances were read from the given filepath {}. "
                                      "Is the path correct?".format(file_path))
@@ -117,5 +121,6 @@ class SquadReader(DatasetReader):
     def from_params(cls, params: Params) -> 'SquadReader':
         tokenizer = Tokenizer.from_params(params.pop('tokenizer', {}))
         token_indexers = TokenIndexer.dict_from_params(params.pop('token_indexers', {}))
+        max_instances = params.pop('max_instances', {})
         params.assert_empty(cls.__name__)
-        return cls(tokenizer=tokenizer, token_indexers=token_indexers)
+        return cls(tokenizer=tokenizer, token_indexers=token_indexers, max_instances=max_instances)
