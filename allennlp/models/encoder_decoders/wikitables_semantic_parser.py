@@ -197,7 +197,7 @@ class WikiTablesSemanticParser(Model):
         This method trims the output predictions to the first end symbol, replaces indices with
         corresponding tokens, and adds a field called ``predicted_tokens`` to the ``output_dict``.
         """
-        best_action_indices = output_dict["best_action_sequence"][0]
+        best_action_indices = output_dict["best_action_sequence"][0][0]
         end_index = self.vocab.get_token_index(END_SYMBOL, self._action_namespace)
         action_strings = []
         for action_index in best_action_indices:

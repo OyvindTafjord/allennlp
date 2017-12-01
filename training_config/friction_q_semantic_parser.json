@@ -1,0 +1,49 @@
+{
+  "dataset_reader": {
+    "type": "friction_q"
+  },
+  "vocabulary": {
+    "non_padded_namespaces": ["actions"]
+  },
+  "train_data_path": "/Users/tafjord/data/friction-q-v2/friction-q-v2-train.jsonl",
+  "validation_data_path": "/Users/tafjord/data/friction-q-v2/friction-q-v2-dev.jsonl",
+  "model": {
+    "type": "wikitables_parser",
+    "question_embedder": {
+      "tokens": {
+        "type": "embedding",
+        "embedding_dim": 25,
+        "trainable": true
+      }
+    },
+    "encoder": {
+      "type": "lstm",
+      "input_size": 25,
+      "hidden_size": 10,
+      "num_layers": 1
+    },
+    "decoder_trainer": {
+      "type": "max_marginal_likelihood"
+    },
+    "decoder_beam_search": {
+      "beam_size": 5
+    },
+    "max_decoding_steps": 30,
+    "action_namespace": "actions",
+    "action_embedding_dim": 10,
+    "attention_function": {"type": "dot_product"}
+  },
+  "iterator": {
+    "type": "bucket",
+    "padding_noise": 0.0,
+    "batch_size" : 1
+  },
+  "trainer": {
+    "num_epochs": 100,
+    "patience": 80,
+    "cuda_device": -1,
+    "optimizer": {
+      "type": "adam"
+    }
+  }
+}
