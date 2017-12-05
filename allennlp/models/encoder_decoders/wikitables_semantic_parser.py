@@ -18,6 +18,7 @@ from allennlp.modules.token_embedders import Embedding
 from allennlp.models.model import Model
 from allennlp.nn import util
 from allennlp.nn.decoding import BeamSearch, DecoderTrainer, DecoderState, DecoderStep
+from allennlp.training.metrics import Average
 
 
 @Model.register("wikitables_parser")
@@ -78,6 +79,8 @@ class WikiTablesSemanticParser(Model):
         self._max_decoding_steps = max_decoding_steps
         self._action_namespace = action_namespace
         self._action_padding_index = 0 if self.vocab.is_padded(self._action_namespace) else -1
+
+        self._action_sequence_accuracy = Average()
 
         self._start_index = self.vocab.get_token_index(START_SYMBOL, self._action_namespace)
         self._end_index = self.vocab.get_token_index(END_SYMBOL, self._action_namespace)
@@ -182,10 +185,32 @@ class WikiTablesSemanticParser(Model):
             best_final_states = self._beam_search.search(num_steps, initial_state, self._decoder_step)
             best_action_sequences = []
             for i in range(batch_size):
-                best_action_sequences.append(best_final_states[i][0].action_history)
+                predicted = best_final_states[i][0].action_history
+                credit = 0
+                if target_action_sequences is not None:
+                    targets = target_action_sequences[i].data
+                    credit = self._action_history_match(predicted[0], targets)
+                self._action_sequence_accuracy(credit)
+                best_action_sequences.append(predicted)
             outputs['best_action_sequence'] = best_action_sequences
             # TODO(matt): compute accuracy here.
             return outputs
+
+    def _action_history_match(self, predicted: List[int], targets: torch.LongTensor) -> int:
+        # Check if target is big enough to cover prediction (including start/end symbols)
+        predicted_len = len(predicted) + 2
+        if predicted_len > targets.size(1):
+            return 0
+        predicted_tensor = torch.LongTensor([self._start_index] + predicted + [self._end_index])
+        targets_trimmed = targets[:, :predicted_len]
+        # Return 1 if the correct sequence is anywhere in the
+        return torch.max(torch.min(targets_trimmed.eq(predicted_tensor), dim=1)[0])
+
+    @overrides
+    def get_metrics(self, reset: bool = False) -> Dict[str, float]:
+        return {
+            'parse_acc': self._action_sequence_accuracy.get_metric(reset)
+        }
 
     @overrides
     def decode(self, output_dict: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
