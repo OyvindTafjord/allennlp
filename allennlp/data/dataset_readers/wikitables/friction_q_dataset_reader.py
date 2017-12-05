@@ -18,7 +18,7 @@ from allennlp.data.tokenizers import Tokenizer, WordTokenizer
 from allennlp.data.token_indexers import TokenIndexer, SingleIdTokenIndexer
 from allennlp.data.fields import TextField, KnowledgeGraphField, LabelField, ListField, MetadataField
 from allennlp.data.semparse.knowledge_graphs import TableKnowledgeGraph
-from allennlp.data.semparse.worlds import WikiTablesWorld
+from allennlp.data.semparse.worlds import FrictionWorld
 from allennlp.data.dataset_readers.dataset_reader import DatasetReader
 from allennlp.data.dataset_readers.seq2seq import START_SYMBOL, END_SYMBOL
 
@@ -35,8 +35,10 @@ class FrictionQDatasetReader(DatasetReader):
                  question_token_indexers: Dict[str, TokenIndexer] = None) -> None:
         self._tokenizer = tokenizer or WordTokenizer()
         self._question_token_indexers = question_token_indexers or {"tokens": SingleIdTokenIndexer()}
-        self._table_knowledge_graph = TableKnowledgeGraph.read_from_json({"columns":["foo"], "cells": [["foo"]]})
-        self._world = WikiTablesWorld(self._table_knowledge_graph)
+        # Fake table so we can use WikiTable parser model
+        self._table_knowledge_graph = TableKnowledgeGraph.read_from_json(
+            {"columns":["foo"], "cells": [["foo"]]})
+        self._world = FrictionWorld()
         self._table_token_indexers = self._question_token_indexers
 
     @overrides
