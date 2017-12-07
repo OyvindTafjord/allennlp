@@ -1,5 +1,5 @@
 from collections import defaultdict
-from typing import Dict, List, Set, Tuple
+from typing import Any, Dict, List, Set, Tuple
 
 from overrides import overrides
 
@@ -20,6 +20,44 @@ from allennlp.nn import util
 from allennlp.nn.decoding import BeamSearch, DecoderTrainer, DecoderState, DecoderStep
 from allennlp.training.metrics import Average
 
+#TODO put these somewhere if we use them
+def parse_action(str):
+    (lhs, rhs) = str.split(" -> ")
+    res = [rhs]
+    if rhs[0] == "[":
+        res = rhs[1:-1].split(', ')
+    return (lhs, res)
+
+def do_action(expr, action):
+    if expr is None:
+        return None
+    res = expr.copy()
+    for (i, arg) in enumerate(expr):
+        if isinstance(arg, str):
+            if arg == action[0]:
+                res[i] = action[1]
+                return res
+        else:
+            tmp = do_action(arg, action)
+            if tmp is not None:
+                res[i] = tmp
+                return res
+    return None
+
+def make_string(expr):
+    if isinstance(expr, str):
+        return expr
+    elif len(expr) == 1:
+        return make_string(expr[0])
+    else:
+        args = [make_string(x) for x in expr]
+        return "(" + " ".join(args) + ")"
+
+def action_sequence_to_string(action_sequence):
+    res = [action_sequence[0]]
+    for action in action_sequence[1:]:
+        res = do_action(res, parse_action(action))
+    return make_string(res)
 
 @Model.register("wikitables_parser")
 class WikiTablesSemanticParser(Model):
@@ -100,7 +138,8 @@ class WikiTablesSemanticParser(Model):
     def forward(self,  # type: ignore
                 question: Dict[str, torch.LongTensor],
                 table: Dict[str, torch.LongTensor],
-                target_action_sequences: torch.LongTensor = None) -> Dict[str, torch.Tensor]:
+                target_action_sequences: torch.LongTensor = None,
+                metadata: List[Dict[str, Any]] = None) -> Dict[str, torch.Tensor]:
         # pylint: disable=arguments-differ
         # pylint: disable=unused-argument
         """
@@ -184,15 +223,18 @@ class WikiTablesSemanticParser(Model):
                 num_steps = self._max_decoding_steps
             best_final_states = self._beam_search.search(num_steps, initial_state, self._decoder_step)
             best_action_sequences = []
+            credits = []
             for i in range(batch_size):
                 predicted = best_final_states[i][0].action_history
                 credit = 0
                 if target_action_sequences is not None:
                     targets = target_action_sequences[i].data
                     credit = self._action_history_match(predicted[0], targets)
+                credits.append(credit)
                 self._action_sequence_accuracy(credit)
                 best_action_sequences.append(predicted)
             outputs['best_action_sequence'] = best_action_sequences
+            outputs['is_correct']  = credits
             # TODO(matt): compute accuracy here.
             return outputs
 
@@ -203,7 +245,7 @@ class WikiTablesSemanticParser(Model):
             return 0
         predicted_tensor = torch.LongTensor([self._start_index] + predicted + [self._end_index])
         targets_trimmed = targets[:, :predicted_len]
-        # Return 1 if the correct sequence is anywhere in the
+        # Return 1 if the correct sequence is anywhere in the targets
         return torch.max(torch.min(targets_trimmed.eq(predicted_tensor), dim=1)[0])
 
     @overrides
@@ -222,16 +264,24 @@ class WikiTablesSemanticParser(Model):
         This method trims the output predictions to the first end symbol, replaces indices with
         corresponding tokens, and adds a field called ``predicted_tokens`` to the ``output_dict``.
         """
-        best_action_indices = output_dict["best_action_sequence"][0][0]
-        end_index = self.vocab.get_token_index(END_SYMBOL, self._action_namespace)
-        action_strings = []
-        for action_index in best_action_indices:
-            # Collect indices till the first end_symbol
-            if action_index == end_index:
-                break
-            action_strings.append(self.vocab.get_token_from_index(action_index,
-                                                                  namespace=self._action_namespace))
-        output_dict["predicted_actions"] = [action_strings]
+        predicted_actions = []
+        predicted_logical_forms = []
+        best_action_sequences = output_dict["best_action_sequence"]
+        batch_size = len(best_action_sequences)
+        for i in range(batch_size):
+            best_action_indices = best_action_sequences[i][0]
+            end_index = self.vocab.get_token_index(END_SYMBOL, self._action_namespace)
+            action_strings = []
+            for action_index in best_action_indices:
+                # Collect indices till the first end_symbol
+                if action_index == end_index:
+                    break
+                action_strings.append(self.vocab.get_token_from_index(action_index,
+                                                                      namespace=self._action_namespace))
+            predicted_actions.append(action_strings)
+            predicted_logical_forms.append(action_sequence_to_string(action_strings))
+        output_dict["predicted_actions"] = predicted_actions
+        output_dict["predicted_logical_forms"] = predicted_logical_forms
         return output_dict
 
     @classmethod

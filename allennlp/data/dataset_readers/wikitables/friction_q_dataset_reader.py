@@ -55,7 +55,9 @@ class FrictionQDatasetReader(DatasetReader):
                 question_id = question_data['id']
                 logical_forms = question_data['logical_forms']
                 answer_index = question_data['answer_index']
-                additional_metadata = {'id': question_id, 'answer_index': answer_index}
+                additional_metadata = {'id': question_id,
+                                       'answer_index': answer_index,
+                                       'logical_forms': logical_forms}
                 instances.append(self.text_to_instance(question, logical_forms, additional_metadata))
         if not instances:
             raise ConfigurationError("No instances read!")
@@ -80,7 +82,7 @@ class FrictionQDatasetReader(DatasetReader):
             action_sequences_field = ListField([self._make_action_sequence_field(sequence)
                                                 for sequence in action_sequences])
             fields['target_action_sequences'] = action_sequences_field
-        # fields['metadata'] = MetadataField(additional_metadata or {})
+        fields['metadata'] = MetadataField(additional_metadata or {})
         return Instance(fields)
 
     @staticmethod
