@@ -15,5 +15,6 @@ from allennlp.models.reading_comprehension.bidaf import BidirectionalAttentionFl
 from allennlp.models.semantic_parsing.nlvr.nlvr_coverage_semantic_parser import NlvrCoverageSemanticParser
 from allennlp.models.semantic_parsing.nlvr.nlvr_direct_semantic_parser import NlvrDirectSemanticParser
 from allennlp.models.semantic_parsing.wikitables.wikitables_semantic_parser import WikiTablesSemanticParser
+from allennlp.models.semantic_parsing.wikitables.friction_q_semantic_parser import FrictionQSemanticParser
 from allennlp.models.semantic_role_labeler import SemanticRoleLabeler
 from allennlp.models.simple_tagger import SimpleTagger

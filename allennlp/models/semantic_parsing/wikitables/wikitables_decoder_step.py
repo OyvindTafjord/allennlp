@@ -91,7 +91,8 @@ class WikiTablesDecoderStep(DecoderStep[WikiTablesDecoderState]):
         # (group_size, decoder_input_dim)
         projected_input = self._input_projection_layer(torch.cat([attended_question,
                                                                   previous_action_embedding], -1))
-        decoder_input = torch.nn.functional.relu(projected_input)
+        # decoder_input = torch.nn.functional.relu(projected_input)
+        decoder_input = projected_input
 
         hidden_state, memory_cell = self._decoder_cell(decoder_input, (hidden_state, memory_cell))
         hidden_state = self._dropout(hidden_state)
@@ -109,7 +110,8 @@ class WikiTablesDecoderStep(DecoderStep[WikiTablesDecoderState]):
         action_query = torch.cat([hidden_state, attended_question], dim=-1)
 
         # (group_size, action_embedding_dim)
-        projected_query = torch.nn.functional.relu(self._output_projection_layer(action_query))
+        #projected_query = torch.nn.functional.relu(self._output_projection_layer(action_query))
+        projected_query = self._output_projection_layer(action_query)
         predicted_action_embedding = self._dropout(projected_query)
 
         considered_actions, actions_to_embed, actions_to_link = self._get_actions_to_consider(state)
@@ -124,7 +126,7 @@ class WikiTablesDecoderStep(DecoderStep[WikiTablesDecoderState]):
         # `bmm` and some squeezing.
         # Shape: (group_size, num_embedded_actions)
         embedded_action_logits = action_embeddings.bmm(predicted_action_embedding.unsqueeze(-1)).squeeze(-1)
-        embedded_action_logits = embedded_action_logits + action_biases.squeeze(-1)
+        #embedded_action_logits = embedded_action_logits + action_biases.squeeze(-1)
 
         if actions_to_link:
             # entity_action_logits: (group_size, num_entity_actions)

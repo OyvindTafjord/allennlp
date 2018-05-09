@@ -10,6 +10,7 @@ and produce datasets in the formats required by specific models.
 from allennlp.data.dataset_readers.conll2003 import Conll2003DatasetReader
 from allennlp.data.dataset_readers.coreference_resolution import ConllCorefReader, WinobiasReader
 from allennlp.data.dataset_readers.dataset_reader import DatasetReader
+from allennlp.data.dataset_readers.friction_q import FrictionQDatasetReader
 from allennlp.data.dataset_readers.language_modeling import LanguageModelingReader
 from allennlp.data.dataset_readers.nlvr import NlvrDatasetReader
 from allennlp.data.dataset_readers.penn_tree_bank import PennTreeBankConstituencySpanDatasetReader
