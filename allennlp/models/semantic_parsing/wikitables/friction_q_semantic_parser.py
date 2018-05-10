@@ -1,6 +1,7 @@
 from typing import Any, Dict, List, Tuple
 
 from overrides import overrides
+import math
 import torch
 from torch.autograd import Variable
 
@@ -408,16 +409,19 @@ class FrictionQSemanticParser(Model):
             #     outputs['feature_scores'] = feature_scores
             # outputs['similarity_scores'] = question_entity_similarity_max_score
             outputs['logical_form'] = []
+            outputs['denotation_acc'] = []
+            outputs['score'] = []
+            outputs['parse_acc'] = []
             for i in range(batch_size):
                 # Decoding may not have terminated with any completed logical forms, if `num_steps`
                 # isn't long enough (or if the model is not trained enough and gets into an
                 # infinite action loop).
                 if i in best_final_states:
                     best_action_indices = best_final_states[i][0].action_history[0]
+                    sequence_in_targets = 0
                     if target_action_sequences is not None:
                         # Use a Tensor, not a Variable, to avoid a memory leak.
                         targets = target_action_sequences[i].data
-                        sequence_in_targets = 0
                         sequence_in_targets = self._action_history_match(best_action_indices, targets)
                         self._action_sequence_accuracy(sequence_in_targets)
                     action_strings = [action_mapping[(i, action_index)] for action_index in best_action_indices]
@@ -427,15 +431,24 @@ class FrictionQSemanticParser(Model):
                     except ParsingError:
                         self._has_logical_form(0.0)
                         logical_form = 'Error producing logical form'
+                    denotation_accuracy = 0
                     if metadata is not None:
                         answer_index = metadata[i]['answer_index']
-                        self._denotation_accuracy(self._denotation_match(logical_form, answer_index))
+                        denotation_accuracy = self._denotation_match(logical_form, answer_index)
+                        self._denotation_accuracy(denotation_accuracy)
+                    score = math.exp(best_final_states[i][0].score[0].data.cpu().tolist()[0])
+                    outputs['score'].append(score)
+                    outputs['parse_acc'].append(sequence_in_targets)
                     outputs['best_action_sequence'].append(action_strings)
                     outputs['logical_form'].append(logical_form)
+                    outputs['denotation_acc'].append(denotation_accuracy)
                     outputs['debug_info'].append(best_final_states[i][0].debug_info[0])  # type: ignore
                     outputs['entities'].append(world[i].table_graph.entities)
                 else:
+                    outputs['parse_acc'].append(0)
                     outputs['logical_form'].append('')
+                    outputs['denotation_acc'].append(0)
+                    outputs['score'].append(0)
                     self._has_logical_form(0.0)
                     if example_lisp_string:
                         self._denotation_accuracy(0.0)
