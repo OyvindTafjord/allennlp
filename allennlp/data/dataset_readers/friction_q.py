@@ -5,6 +5,7 @@ Reader for Friction questions
 from typing import Any, Dict, List, Union
 import json
 import logging
+import re
 
 from overrides import overrides
 
@@ -20,7 +21,6 @@ from allennlp.data.dataset_readers.dataset_reader import DatasetReader
 from allennlp.data.dataset_readers.seq2seq import START_SYMBOL, END_SYMBOL
 from allennlp.semparse.contexts import TableQuestionKnowledgeGraph
 from allennlp.semparse.worlds import FrictionWorld
-from allennlp.semparse.worlds import WikiTablesWorld
 
 
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
@@ -55,6 +55,7 @@ class FrictionQDatasetReader(DatasetReader):
                     continue
                 question_data = json.loads(line)
                 question = question_data['question']
+                question = self._fix_question(question)
                 question_id = question_data['id']
                 logical_forms = question_data['logical_forms']
                 answer_index = question_data['answer_index']
@@ -114,6 +115,14 @@ class FrictionQDatasetReader(DatasetReader):
             fields['target_action_sequences'] = ListField(action_sequence_fields)
         fields['metadata'] = MetadataField(additional_metadata or {})
         return Instance(fields)
+
+    @staticmethod
+    def _fix_question(question: str) -> str:
+        """
+        Replace answer dividers (A), (B) etc with a unique token answeroptionA, answeroptionB, ...
+        """
+        return re.sub(r'\(([A-G])\)', r"answeroption\1", question)
+
 
     @staticmethod
     def _make_action_sequence_field(action_sequence: List[str]) -> ListField:

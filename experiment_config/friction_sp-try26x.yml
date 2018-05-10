@@ -1,0 +1,23 @@
+description: Friction Q SP Elmo+BiLSTM
+tasks:
+  - spec:
+      blueprint: allennlpfrictionqV2
+      resultPath: /output
+      args:
+        - python
+        - '-m'
+        - allennlp.run
+        - train
+        - /config.json
+        - '-s'
+        - /output
+        - '--file-friendly-logging'
+      datasetMounts:
+        - datasetId: ds_ti4m6hiqcqxw
+          containerPath: /inputs/friction-q-v3
+        - datasetId: ds_gnguunokqdaf
+          containerPath: /glove
+        - datasetId: ds_rcbciij0imkr
+          containerPath: /config.json
+      requirements:
+        gpuCount: 1
