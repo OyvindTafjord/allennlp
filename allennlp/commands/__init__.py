@@ -14,6 +14,7 @@ from allennlp.commands.subcommand import Subcommand
 from allennlp.commands.train import Train
 from allennlp.service.predictors import DemoModel
 from allennlp.common.util import import_submodules
+from allennlp.commands.evaluate_custom import EvaluateCustom
 
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
 
@@ -34,6 +35,7 @@ def main(prog: str = None,
             # Default commands
             "train": Train(),
             "evaluate": Evaluate(),
+            "evaluate_custom": EvaluateCustom(),
             "predict": Predict(),
             "serve": Serve(),
             "make-vocab": MakeVocab(),
