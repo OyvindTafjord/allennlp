@@ -108,7 +108,10 @@ class FrictionQDecoderState(DecoderState['FrictionQDecoderState']):
     def combine_states(cls, states: List['FrictionQDecoderState']) -> 'FrictionQDecoderState':
         batch_indices = [batch_index for state in states for batch_index in state.batch_indices]
         action_histories = [action_history for state in states for action_history in state.action_history]
-        action_contexts = [action_contexts for state in states for action_contexts in state.action_contexts]
+        if states[0].action_contexts is not None:
+            action_contexts = [action_contexts for state in states for action_contexts in state.action_contexts]
+        else:
+            action_contexts = None
         scores = [score for state in states for score in state.score]
         rnn_states = [rnn_state for state in states for rnn_state in state.rnn_state]
         grammar_states = [grammar_state for state in states for grammar_state in state.grammar_state]
