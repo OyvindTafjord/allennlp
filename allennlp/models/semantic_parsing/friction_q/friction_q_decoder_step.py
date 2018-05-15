@@ -22,6 +22,7 @@ class FrictionQDecoderStep(DecoderStep[FrictionQDecoderState]):
     def __init__(self,
                  encoder_output_dim: int,
                  action_embedding_dim: int,
+                 action_context_dim: int,
                  attention_function: SimilarityFunction,
                  num_start_types: int,
                  num_entity_types: int,
@@ -31,6 +32,7 @@ class FrictionQDecoderStep(DecoderStep[FrictionQDecoderState]):
         self._mixture_feedforward = mixture_feedforward
         self._entity_type_embedding = Embedding(num_entity_types, action_embedding_dim)
         self._input_attention = Attention(attention_function)
+        self.action_context_dim = action_context_dim
 
         self._num_start_types = num_start_types
         self._start_type_predictor = Linear(encoder_output_dim, num_start_types)
@@ -46,7 +48,7 @@ class FrictionQDecoderStep(DecoderStep[FrictionQDecoderState]):
         # Before making a prediction, we'll compute an attention over the input given our updated
         # hidden state.  Then we concatenate that with the decoder state and project to
         # `action_embedding_dim` to make a prediction.
-        self._output_projection_layer = Linear(output_dim + encoder_output_dim, action_embedding_dim)
+        self._output_projection_layer = Linear(output_dim + encoder_output_dim, action_embedding_dim + action_context_dim)
 
         # TODO(pradeep): Do not hardcode decoder cell type.
         self._decoder_cell = LSTMCell(input_dim, output_dim)
@@ -251,6 +253,7 @@ class FrictionQDecoderStep(DecoderStep[FrictionQDecoderState]):
                                                    rnn_state=[new_rnn_state],
                                                    grammar_state=[new_grammar_state],
                                                    action_embeddings=state.action_embeddings,
+                                                   action_contexts=state.action_contexts,
                                                    output_action_embeddings=state.output_action_embeddings,
                                                    action_biases=state.action_biases,
                                                    action_indices=state.action_indices,
@@ -406,6 +409,7 @@ class FrictionQDecoderStep(DecoderStep[FrictionQDecoderState]):
             A mask of shape ``(group_size, num_actions)`` indicating which ``(group_index,
             action_index)`` pairs were merely added as padding.
         """
+        assert(len(actions_to_embed) == len(state.batch_indices))
         num_actions = [len(action_list) for action_list in actions_to_embed]
         max_num_actions = max(num_actions)
         padded_actions = [common_util.pad_sequence_to_length(action_list, max_num_actions)
@@ -422,7 +426,13 @@ class FrictionQDecoderStep(DecoderStep[FrictionQDecoderState]):
 
         flattened_actions = action_tensor.view(-1)
         flattened_action_embeddings = state.action_embeddings.index_select(0, flattened_actions)
-        action_embeddings = flattened_action_embeddings.view(group_size, max_num_actions, action_embedding_dim)
+        if state.action_contexts is not None:
+            action_contexts = [context.index_select(0, actions) for (actions, context) in
+                               zip(action_tensor, state.action_contexts)]
+            flattened_action_contexts = torch.stack(action_contexts).view(group_size * max_num_actions, -1)
+            flattened_action_embeddings = torch.cat([flattened_action_embeddings, flattened_action_contexts], 1)
+
+        action_embeddings = flattened_action_embeddings.view(group_size, max_num_actions, -1)
 
         flattened_output_embeddings = state.output_action_embeddings.index_select(0, flattened_actions)
         output_embeddings = flattened_output_embeddings.view(group_size, max_num_actions, action_embedding_dim)
@@ -591,6 +601,15 @@ class FrictionQDecoderStep(DecoderStep[FrictionQDecoderState]):
                 new_action_history = state.action_history[group_index] + [action]
                 new_score = sorted_log_probs[group_index, action_index]
 
+                if state.action_contexts is not None:
+                    # Replace the action context for the applied action with the current attended_question
+                    new_action_contexts = state.action_contexts
+                    new_action_context = new_action_contexts[batch_index].clone()
+                    new_action_context[action_index] = attended_question[group_index]
+                    new_action_contexts[batch_index] = new_action_context
+                else:
+                    new_action_contexts = None
+
                 # `action_index` is the index in the _sorted_ tensors, but the action embedding
                 # matrix is _not_ sorted, so we need to get back the original, non-sorted action
                 # index before we get the action embedding.
@@ -621,6 +640,7 @@ class FrictionQDecoderStep(DecoderStep[FrictionQDecoderState]):
                                                    rnn_state=[new_rnn_state],
                                                    grammar_state=[new_grammar_state],
                                                    action_embeddings=state.action_embeddings,
+                                                   action_contexts=new_action_contexts,
                                                    output_action_embeddings=state.output_action_embeddings,
                                                    action_biases=state.action_biases,
                                                    action_indices=state.action_indices,

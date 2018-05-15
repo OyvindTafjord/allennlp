@@ -1,4 +1,4 @@
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional
 
 import torch
 
@@ -29,6 +29,9 @@ class FrictionQDecoderState(DecoderState['FrictionQDecoderState']):
     action_embeddings : ``torch.Tensor``
         The global action embeddings tensor.  Has shape ``(num_global_embeddable_actions,
         action_embedding_dim)``.
+    action_contexts : ``Optional[List[torch.Tensor]]``
+        Tracking the context for each action when last applied.  Has shape
+        ``(batch_size, num_global_embeddable_actions, action_context_dim)``.
     output_action_embeddings : ``torch.Tensor``
         The global output action embeddings tensor.  Has shape ``(num_global_embeddable_actions,
         action_embedding_dim)``.
@@ -59,6 +62,7 @@ class FrictionQDecoderState(DecoderState['FrictionQDecoderState']):
                  rnn_state: List[RnnState],
                  grammar_state: List[GrammarState],
                  action_embeddings: torch.Tensor,
+                 action_contexts: Optional[List[torch.Tensor]],
                  output_action_embeddings: torch.Tensor,
                  action_biases: torch.Tensor,
                  action_indices: Dict[Tuple[int, int], int],
@@ -71,6 +75,7 @@ class FrictionQDecoderState(DecoderState['FrictionQDecoderState']):
         self.rnn_state = rnn_state
         self.grammar_state = grammar_state
         self.action_embeddings = action_embeddings
+        self.action_contexts = action_contexts
         self.output_action_embeddings = output_action_embeddings
         self.action_biases = action_biases
         self.action_indices = action_indices
@@ -103,6 +108,7 @@ class FrictionQDecoderState(DecoderState['FrictionQDecoderState']):
     def combine_states(cls, states: List['FrictionQDecoderState']) -> 'FrictionQDecoderState':
         batch_indices = [batch_index for state in states for batch_index in state.batch_indices]
         action_histories = [action_history for state in states for action_history in state.action_history]
+        action_contexts = [action_contexts for state in states for action_contexts in state.action_contexts]
         scores = [score for state in states for score in state.score]
         rnn_states = [rnn_state for state in states for rnn_state in state.rnn_state]
         grammar_states = [grammar_state for state in states for grammar_state in state.grammar_state]
@@ -116,6 +122,7 @@ class FrictionQDecoderState(DecoderState['FrictionQDecoderState']):
                                       rnn_state=rnn_states,
                                       grammar_state=grammar_states,
                                       action_embeddings=states[0].action_embeddings,
+                                      action_contexts=action_contexts,
                                       output_action_embeddings=states[0].output_action_embeddings,
                                       action_biases=states[0].action_biases,
                                       action_indices=states[0].action_indices,
