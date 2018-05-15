@@ -11,8 +11,8 @@ from allennlp.common.util import pad_sequence_to_length
 from allennlp.data import Vocabulary
 from allennlp.data.fields.production_rule_field import ProductionRuleArray
 from allennlp.models.model import Model
-from allennlp.models.semantic_parsing.wikitables.wikitables_decoder_step import WikiTablesDecoderStep
-from allennlp.models.semantic_parsing.wikitables.wikitables_decoder_state import WikiTablesDecoderState
+from allennlp.models.semantic_parsing.friction_q.friction_q_decoder_step import FrictionQDecoderStep
+from allennlp.models.semantic_parsing.friction_q.friction_q_decoder_state import FrictionQDecoderState
 from allennlp.modules import TextFieldEmbedder, Seq2SeqEncoder, FeedForward, Embedding
 from allennlp.modules.seq2vec_encoders import Seq2VecEncoder, BagOfEmbeddingsEncoder
 from allennlp.modules.similarity_functions import SimilarityFunction
@@ -146,7 +146,7 @@ class FrictionQSemanticParser(Model):
 
         self._decoder_trainer = MaximumMarginalLikelihood()
 
-        self._decoder_step = WikiTablesDecoderStep(encoder_output_dim=self._encoder.get_output_dim(),
+        self._decoder_step = FrictionQDecoderStep(encoder_output_dim=self._encoder.get_output_dim(),
                                                    action_embedding_dim=action_embedding_dim,
                                                    attention_function=attention_function,
                                                    num_start_types=self._num_start_types,
@@ -362,7 +362,7 @@ class FrictionQSemanticParser(Model):
                                               question_mask_list))
         initial_grammar_state = [self._create_grammar_state(world[i], actions[i])
                                  for i in range(batch_size)]
-        initial_state = WikiTablesDecoderState(batch_indices=list(range(batch_size)),
+        initial_state = FrictionQDecoderState(batch_indices=list(range(batch_size)),
                                                action_history=[[] for _ in range(batch_size)],
                                                score=initial_score_list,
                                                rnn_state=initial_rnn_state,
@@ -807,7 +807,7 @@ class FrictionQSemanticParser(Model):
         """
         This method overrides ``Model.decode``, which gets called after ``Model.forward``, at test
         time, to finalize predictions.  This is (confusingly) a separate notion from the "decoder"
-        in "encoder/decoder", where that decoder logic lives in ``WikiTablesDecoderStep``.
+        in "encoder/decoder", where that decoder logic lives in ``FrictionQDecoderStep``.
 
         This method trims the output predictions to the first end symbol, replaces indices with
         corresponding tokens, and adds a field called ``predicted_tokens`` to the ``output_dict``.
