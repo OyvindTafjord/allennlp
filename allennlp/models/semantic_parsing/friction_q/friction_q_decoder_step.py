@@ -603,10 +603,9 @@ class FrictionQDecoderStep(DecoderStep[FrictionQDecoderState]):
 
                 if state.action_contexts is not None:
                     # Replace the action context for the applied action with the current attended_question
-                    new_action_contexts = state.action_contexts
-                    new_action_context = new_action_contexts[batch_index].clone()
+                    new_action_context = state.action_contexts[group_index].clone()
                     new_action_context[action_index] = attended_question[group_index]
-                    new_action_contexts[batch_index] = new_action_context
+                    new_action_contexts = [new_action_context]
                 else:
                     new_action_contexts = None
 
