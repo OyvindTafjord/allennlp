@@ -13,7 +13,7 @@ import tqdm
 
 from allennlp.common import Params
 from allennlp.data.instance import Instance
-from allennlp.data.tokenizers import Tokenizer, WordTokenizer
+from allennlp.data.tokenizers import Token, Tokenizer, WordTokenizer
 from allennlp.data.token_indexers import TokenIndexer, SingleIdTokenIndexer
 from allennlp.data.fields import Field, TextField, KnowledgeGraphField, LabelField
 from allennlp.data.fields import IndexField, ListField, MetadataField, ProductionRuleField
@@ -74,12 +74,13 @@ class FrictionQDatasetReader(DatasetReader):
     def text_to_instance(self,  # type: ignore
                          question: str,
                          logical_forms: List[str] = None,
-                         additional_metadata: Dict[str, Any] = None) -> Instance:
+                         additional_metadata: Dict[str, Any] = None,
+                         tokenized_question: List[Token] = None) -> Instance:
         """
 
         """
         # pylint: disable=arguments-differ
-        tokenized_question = self._tokenizer.tokenize(question)
+        tokenized_question = tokenized_question or self._tokenizer.tokenize(question.lower())
         question_field = TextField(tokenized_question, self._question_token_indexers)
         table_field = KnowledgeGraphField(self._table_knowledge_graph,
                                           tokenized_question,

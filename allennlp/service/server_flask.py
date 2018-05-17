@@ -226,6 +226,9 @@ def make_app(build_dir: str = None, demo_db: Optional[DemoDatabase] = None) -> F
 
         elif model_name == "constituency-parsing":
             log_blob["outputs"]["trees"] = prediction["trees"]
+        elif model_name == "friction-q-parsing":
+            log_blob['outputs']['logical_form'] = prediction['logical_form']
+            log_blob['outputs']['answer'] = prediction['answer']
 
         logger.info("prediction: %s", json.dumps(log_blob))
 
@@ -256,12 +259,14 @@ def make_app(build_dir: str = None, demo_db: Optional[DemoDatabase] = None) -> F
     @app.route('/machine-comprehension')
     @app.route('/textual-entailment')
     @app.route('/coreference-resolution')
+    @app.route('/friction-q-parsing')
     @app.route('/named-entity-recognition')
     @app.route('/semantic-role-labeling/<permalink>')
     @app.route('/constituency-parsing/<permalink>')
     @app.route('/machine-comprehension/<permalink>')
     @app.route('/textual-entailment/<permalink>')
     @app.route('/coreference-resolution/<permalink>')
+    @app.route('/friction-q-parsing/<permalink>')
     @app.route('/named-entity-recognition/<permalink>')
     def return_page(permalink: str = None) -> Response:  # pylint: disable=unused-argument, unused-variable
         """return the page"""

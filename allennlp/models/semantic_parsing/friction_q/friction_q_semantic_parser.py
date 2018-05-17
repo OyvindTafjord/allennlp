@@ -427,6 +427,7 @@ class FrictionQSemanticParser(Model):
             outputs['denotation_acc'] = []
             outputs['score'] = []
             outputs['parse_acc'] = []
+            outputs['answer_index'] = []
             for i in range(batch_size):
                 # Decoding may not have terminated with any completed logical forms, if `num_steps`
                 # isn't long enough (or if the model is not trained enough and gets into an
@@ -447,11 +448,13 @@ class FrictionQSemanticParser(Model):
                         self._has_logical_form(0.0)
                         logical_form = 'Error producing logical form'
                     denotation_accuracy = 0
-                    if metadata is not None:
+                    predicted_answer_index = FrictionWorld.execute(logical_form)
+                    if metadata is not None and 'answer_index' in metadata[i]:
                         answer_index = metadata[i]['answer_index']
-                        denotation_accuracy = self._denotation_match(logical_form, answer_index)
+                        denotation_accuracy = self._denotation_match(predicted_answer_index, answer_index)
                         self._denotation_accuracy(denotation_accuracy)
                     score = math.exp(best_final_states[i][0].score[0].data.cpu().tolist()[0])
+                    outputs['answer_index'].append(predicted_answer_index)
                     outputs['score'].append(score)
                     outputs['parse_acc'].append(sequence_in_targets)
                     outputs['best_action_sequence'].append(action_strings)
@@ -658,8 +661,7 @@ class FrictionQSemanticParser(Model):
         return torch.max(torch.min(targets_trimmed.eq(predicted_tensor), dim=1)[0])
 
     @staticmethod
-    def _denotation_match(predicted_lf: str, target_answer_index: int) -> float:
-        predicted_answer_index = FrictionWorld.execute(predicted_lf)
+    def _denotation_match(predicted_answer_index: int, target_answer_index: int) -> float:
         if predicted_answer_index < 0:
             # Logical form doesn't properly resolve, we do random guess with 0.5 credit
             return 0.5

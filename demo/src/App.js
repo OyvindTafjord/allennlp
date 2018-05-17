@@ -7,6 +7,7 @@ import McComponent from './components/McComponent';
 import CorefComponent from './components/CorefComponent'
 import NamedEntityComponent from './components/NamedEntityComponent'
 import ConstituencyParserComponent from './components/ConstituencyParserComponent'
+import FrictionQParserComponent from './components/FrictionQParserComponent'
 import Menu from './components/Menu';
 import WaitingForPermalink from './components/WaitingForPermalink'
 
@@ -14,7 +15,7 @@ import WaitingForPermalink from './components/WaitingForPermalink'
   <App /> Container
 *******************************************************************************/
 
-const DEFAULT_PATH = "/machine-comprehension"
+const DEFAULT_PATH = "/friction-q-parsing"
 
 // The App is just a react-router wrapped around the Demo component.
 const App = () => (
@@ -119,6 +120,9 @@ class Demo extends React.Component {
       }
       else if (selectedModel === "constituency-parsing") {
         return (<ConstituencyParserComponent requestData={requestData} responseData={responseData}/>)
+      }
+      else if (selectedModel === "friction-q-parsing") {
+        return (<FrictionQParserComponent requestData={requestData} responseData={responseData}/>)
       }
     }
 

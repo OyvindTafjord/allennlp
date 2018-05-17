@@ -34,12 +34,7 @@ class Menu extends React.Component {
             </h1>
             <nav>
               <ul>
-                {buildLink("machine-comprehension", "Machine Comprehension")}
-                {buildLink("textual-entailment", "Textual Entailment")}
-                {buildLink("semantic-role-labeling", "Semantic Role Labeling")}
-                {buildLink("coreference-resolution", "Coreference Resolution")}
-                {buildLink("named-entity-recognition", "Named Entity Recognition")}
-                {buildLink("constituency-parsing", "Constituency Parsing")}
+                {buildLink("friction-q-parsing", "Friction Q Parsing")}
               </ul>
             </nav>
           </div>
