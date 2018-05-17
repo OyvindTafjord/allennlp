@@ -33,6 +33,7 @@ class FrictionQDatasetReader(DatasetReader):
     """
     def __init__(self,
                  lazy: bool = False,
+                 filter_type2: bool = False,
                  tokenizer: Tokenizer = None,
                  question_token_indexers: Dict[str, TokenIndexer] = None) -> None:
         super().__init__(lazy=lazy)
@@ -43,6 +44,7 @@ class FrictionQDatasetReader(DatasetReader):
             {"columns":["foo"], "cells": [["foo"]], "question":[]})
         self._world = FrictionWorld(self._table_knowledge_graph)
         self._table_token_indexers = self._question_token_indexers
+        self._filter_type2 = filter_type2
 
     @overrides
     def _read(self, file_path):
@@ -58,6 +60,9 @@ class FrictionQDatasetReader(DatasetReader):
                 question = self._fix_question(question)
                 question_id = question_data['id']
                 logical_forms = question_data['logical_forms']
+                # Hacky filter to ignore "type2" questions
+                if self._filter_type2 and len(logical_forms) > 0 and "(and " in logical_forms[0]:
+                    continue
                 answer_index = question_data['answer_index']
                 additional_metadata = {'id': question_id,
                                        'answer_index': answer_index,
@@ -133,9 +138,11 @@ class FrictionQDatasetReader(DatasetReader):
     @classmethod
     def from_params(cls, params: Params) -> 'FrictionQDatasetReader':
         lazy = params.pop('lazy', False)
+        filter_type2 = params.pop('filter_type2', False)
         tokenizer = Tokenizer.from_params(params.pop('tokenizer', {}))
         question_token_indexers = TokenIndexer.dict_from_params(params.pop('question_token_indexers', {}))
         params.assert_empty(cls.__name__)
         return FrictionQDatasetReader(lazy=lazy,
+                                      filter_type2=filter_type2,
                                       tokenizer=tokenizer,
                                       question_token_indexers=question_token_indexers)

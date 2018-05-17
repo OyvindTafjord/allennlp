@@ -81,20 +81,47 @@ class FrictionWorld(World):
         "heat": 1
     }
 
+    # Size translation for absolute and relative values
+    qr_size = {
+        'higher': 1,
+        'high': 1,
+        'low': -1,
+        'lower': -1
+    }
+
     @staticmethod
-    def _exec_infer(setup, *answers):
+    def check_compatible(setup: List, answer: List) -> bool:
+        attribute_dir = FrictionWorld.qr_coeff[setup[0]] * FrictionWorld.qr_coeff[answer[0]]
+        change_same = 1 if FrictionWorld.qr_size[setup[1]] == FrictionWorld.qr_size[answer[1]] else -1
+        world_same = 1 if setup[2] == answer[2] else -1
+        return attribute_dir * change_same * world_same == 1
+
+    @staticmethod
+    def exec_infer(setup, *answers):
         answer_index = -1
         for index, answer in enumerate(answers):
-            attribute_dir = FrictionWorld.qr_coeff[setup[0]] * FrictionWorld.qr_coeff[answer[0]]
-            change_same = 1 if setup[1] == answer[1] else -1
-            world_same = 1 if setup[2] == answer[2] else -1
-            if attribute_dir * change_same * world_same == 1:
+            if FrictionWorld.check_compatible(setup, answer):
                 if answer_index > -1:
                     # Found two valid answers
                     answer_index = -2
                 else:
                     answer_index = index
         return answer_index
+
+    @staticmethod
+    def exec_and(expr):
+        if len(expr) == 0 or expr[0] != 'and':
+            return expr
+        args = expr[1:]
+        if len(args) == 1:
+            return args[0]
+        if len(args) > 2:
+            # More than 2 arguments not allowed by current grammar
+            return None
+        if FrictionWorld.check_compatible(args[0], args[1]):
+            # Check that arguments are compatible, then fine to keep just one
+            return args[0]
+        return None
 
     @staticmethod
     def execute(lf: str) -> int:
@@ -106,5 +133,8 @@ class FrictionWorld(World):
         if len(parse) < 1 and len(parse[0]) < 2:
             return -1
         if parse[0][0] == 'infer':
-            return FrictionWorld._exec_infer(*parse[0][1:])
+            args = [FrictionWorld.exec_and(arg) for arg in parse[0][1:]]
+            if None in args:
+                return -1
+            return FrictionWorld.exec_infer(*args)
         return -1
