@@ -409,7 +409,6 @@ class FrictionQSemanticParser(Model):
             # This tells the state to start keeping track of debug info, which we'll pass along in
             # our output dictionary.
             initial_state.debug_info = [[] for _ in range(batch_size)]
-            outputs['decoder_state'] = initial_state
             best_final_states = self._beam_search.search(num_steps,
                                                          initial_state,
                                                          self._decoder_step,

@@ -30,6 +30,8 @@ BASIC_TYPES = {NUM_TYPE, ATTR_TYPE, RDIR_TYPE, WORLD_TYPE, VAR_TYPE}
 # WithVar:
 # Default: (infer (<attr> <rdir> <world>) (<attr> <rdir> <world>) (<attr> <rdir> <world>))
 LOGICAL_FORM_SYNTAX = "WithType2"
+# LOGICAL_FORM_SYNTAX = "Default"
+
 if LOGICAL_FORM_SYNTAX == "WithQState":
     QSTATE_TYPE = NamedBasicType("QSTATE")
     # qstate: <ATTR, <QDIR, <WORLD, QSTATE>>>
