@@ -99,6 +99,11 @@ class FrictionWorld(World):
     @staticmethod
     def exec_infer(setup, *answers):
         answer_index = -1
+        if len(answers) == 1:
+            if FrictionWorld.check_compatible(setup, answers[0]):
+                return 1
+            else:
+                return 0
         for index, answer in enumerate(answers):
             if FrictionWorld.check_compatible(setup, answer):
                 if answer_index > -1:

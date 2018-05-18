@@ -30,6 +30,7 @@ BASIC_TYPES = {NUM_TYPE, ATTR_TYPE, RDIR_TYPE, WORLD_TYPE, VAR_TYPE}
 # WithVar:
 # Default: (infer (<attr> <rdir> <world>) (<attr> <rdir> <world>) (<attr> <rdir> <world>))
 LOGICAL_FORM_SYNTAX = "WithType2"
+LOGICAL_FORM_SYNTAX = "WithType2SplitQ"
 # LOGICAL_FORM_SYNTAX = "Default"
 
 if LOGICAL_FORM_SYNTAX == "WithQState":
@@ -107,6 +108,33 @@ elif LOGICAL_FORM_SYNTAX == "WithType2":
     CURRIED_FUNCTIONS = {
         ATTR_FUNCTION_TYPE: 2,
         INFER_FUNCTION_TYPE: 3,
+        AND_FUNCTION_TYPE: 2
+    }
+
+elif LOGICAL_FORM_SYNTAX == "WithType2SplitQ":
+    # attributes: <<QDIR, <WORLD, ATTR>>
+    ATTR_FUNCTION_TYPE = ComplexType(RDIR_TYPE,
+                                     ComplexType(WORLD_TYPE, ATTR_TYPE))
+
+    AND_FUNCTION_TYPE = ComplexType(ATTR_TYPE, ComplexType(ATTR_TYPE, ATTR_TYPE))
+
+    # infer: <ATTR, <ATTR, NUM>>
+    INFER_FUNCTION_TYPE = ComplexType(ATTR_TYPE,
+                                       ComplexType(ATTR_TYPE, NUM_TYPE))
+    add_common_name_with_type("infer", "I10", INFER_FUNCTION_TYPE)
+    add_common_name_with_type("friction", "A10", ATTR_FUNCTION_TYPE)
+    add_common_name_with_type("smoothness", "A11", ATTR_FUNCTION_TYPE)
+    add_common_name_with_type("speed", "A12", ATTR_FUNCTION_TYPE)
+    add_common_name_with_type("heat", "A13", ATTR_FUNCTION_TYPE)
+    add_common_name_with_type("distance", "A14", ATTR_FUNCTION_TYPE)
+
+    add_common_name_with_type("high", "R12", RDIR_TYPE)
+    add_common_name_with_type("low", "R13", RDIR_TYPE)
+    add_common_name_with_type("and", "C10", AND_FUNCTION_TYPE)
+
+    CURRIED_FUNCTIONS = {
+        ATTR_FUNCTION_TYPE: 2,
+        INFER_FUNCTION_TYPE: 2,
         AND_FUNCTION_TYPE: 2
     }
 
