@@ -262,15 +262,35 @@ class FrictionQDatasetReader(DatasetReader):
     entity_name_map = {"world1": "worldone","world2":"worldtwo"}
 
     @staticmethod
+    def _stem_phrase(phrase, stemmer):
+        return re.sub(r"\w+", lambda x: stemmer.stem(x.group(0)), phrase)
+
+    @staticmethod
     def _replace_stemmed_entities(question, entities, stemmer):
-        entities_stemmed = {stemmer.stem(value): FrictionQDatasetReader.entity_name_map.get(key, key)
-                            for key, value in entities.items()}
+        max_words = max([len(re.findall(r"\w+", string)) for string in entities.values()])
+        word_pos = [[match.start(0), match.end(0)] for match in re.finditer(r'\w+', question)]
+        entities_stemmed = {FrictionQDatasetReader._stem_phrase(value, stemmer):
+                            FrictionQDatasetReader.entity_name_map.get(key, key) for key, value in entities.items()}
 
-        def substitute(match):
-            replacement = entities_stemmed.get(stemmer.stem(match.group(0)))
-            return replacement if replacement else match.group(0)
+        def substitute(str):
+            replacement = entities_stemmed.get(FrictionQDatasetReader._stem_phrase(str, stemmer))
+            return replacement if replacement else str
 
-        return re.sub(r"\w+", substitute, question)
+        replacements = {}
+        for num_words in range(1, max_words + 1):
+            for i in range(len(word_pos) - num_words + 1):
+                sub = question[word_pos[i][0]:word_pos[i+num_words-1][1]]
+                new_sub = substitute(sub)
+                if new_sub != sub:
+                    replacements[re.escape(sub)] = new_sub
+
+        if len(replacements) == 0:
+            return question
+
+        pattern = "|".join(sorted(replacements.keys(), key=lambda x: -len(x)))
+        regex = re.compile("\\b("+pattern+")\\b")
+        res = regex.sub(lambda m: replacements[re.escape(m.group(0))], question)
+        return res
 
     @classmethod
     def from_params(cls, params: Params) -> 'FrictionQDatasetReader':
