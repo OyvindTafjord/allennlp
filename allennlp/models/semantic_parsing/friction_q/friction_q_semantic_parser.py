@@ -22,7 +22,6 @@ from allennlp.nn.decoding import BeamSearch, GrammarState, RnnState
 from allennlp.nn.decoding.decoder_trainers import MaximumMarginalLikelihood
 from allennlp.semparse.type_declarations import type_declaration
 from allennlp.semparse.type_declarations.type_declaration import START_SYMBOL
-from allennlp.semparse.type_declarations.friction_type_declaration import STARTING_TYPES
 from allennlp.semparse.worlds import FrictionWorld
 from allennlp.semparse import ParsingError
 from allennlp.training.metrics import Average, WikiTablesAccuracy
@@ -91,6 +90,7 @@ class FrictionQSemanticParser(Model):
                  action_context: str = None,
                  dropout: float = 0.0,
                  num_linking_features: int = 0,
+                 use_entities: bool = False,
                  rule_namespace: str = 'rule_labels',
                  tables_directory: str = '/wikitables/') -> None:
         super(FrictionQSemanticParser, self).__init__(vocab)
@@ -130,11 +130,14 @@ class FrictionQSemanticParser(Model):
         torch.nn.init.normal(self._first_action_embedding)
         torch.nn.init.normal(self._first_attended_question)
 
-        #check_dimensions_match(entity_encoder.get_output_dim(), question_embedder.get_output_dim(),
-        #                       "entity word average embedding dim", "question embedding dim")
+        self._use_entities= use_entities
+
+        if self._use_entities:
+            check_dimensions_match(entity_encoder.get_output_dim(), question_embedder.get_output_dim(),
+                                   "entity word average embedding dim", "question embedding dim")
 
         self._num_entity_types = 4  # TODO(mattg): get this in a more principled way somehow?
-        self._num_start_types = len(STARTING_TYPES)
+        self._num_start_types = 1 # Hardcoded until we feed lf syntax into the model
         self._embedding_dim = question_embedder.get_output_dim()
         self._type_params = torch.nn.Linear(self._num_entity_types, self._embedding_dim)
         self._neighbor_params = torch.nn.Linear(self._embedding_dim, self._embedding_dim)
@@ -220,102 +223,101 @@ class FrictionQSemanticParser(Model):
 
         batch_size, num_entities, num_entity_tokens, _ = embedded_table.size()
 
-        """
-        # (batch_size, num_entities, embedding_dim)
-        encoded_table = self._entity_encoder(embedded_table, table_mask)
-        # (batch_size, num_entities, num_neighbors)
-        neighbor_indices = self._get_neighbor_indices(world, num_entities, encoded_table)
+        if self._use_entities:
+            # (batch_size, num_entities, embedding_dim)
+            encoded_table = self._entity_encoder(embedded_table, table_mask)
+            # (batch_size, num_entities, num_neighbors)
+            neighbor_indices = self._get_neighbor_indices(world, num_entities, encoded_table)
 
-        # Neighbor_indices is padded with -1 since 0 is a potential neighbor index.
-        # Thus, the absolute value needs to be taken in the index_select, and 1 needs to
-        # be added for the mask since that method expects 0 for padding.
-        # (batch_size, num_entities, num_neighbors, embedding_dim)
-        embedded_neighbors = util.batched_index_select(encoded_table, torch.abs(neighbor_indices))
+            # Neighbor_indices is padded with -1 since 0 is a potential neighbor index.
+            # Thus, the absolute value needs to be taken in the index_select, and 1 needs to
+            # be added for the mask since that method expects 0 for padding.
+            # (batch_size, num_entities, num_neighbors, embedding_dim)
+            embedded_neighbors = util.batched_index_select(encoded_table, torch.abs(neighbor_indices))
 
-        neighbor_mask = util.get_text_field_mask({'ignored': neighbor_indices + 1},
-                                                 num_wrapping_dims=1).float()
+            neighbor_mask = util.get_text_field_mask({'ignored': neighbor_indices + 1},
+                                                     num_wrapping_dims=1).float()
 
-        # Encoder initialized to easily obtain a masked average.
-        neighbor_encoder = TimeDistributed(BagOfEmbeddingsEncoder(self._embedding_dim, averaged=True))
-        # (batch_size, num_entities, embedding_dim)
-        embedded_neighbors = neighbor_encoder(embedded_neighbors, neighbor_mask)
+            # Encoder initialized to easily obtain a masked average.
+            neighbor_encoder = TimeDistributed(BagOfEmbeddingsEncoder(self._embedding_dim, averaged=True))
+            # (batch_size, num_entities, embedding_dim)
+            embedded_neighbors = neighbor_encoder(embedded_neighbors, neighbor_mask)
 
-        # entity_types: one-hot tensor with shape (batch_size, num_entities, num_types)
-        # entity_type_dict: Dict[int, int], mapping flattened_entity_index -> type_index
-        # These encode the same information, but for efficiency reasons later it's nice
-        # to have one version as a tensor and one that's accessible on the cpu.
-        entity_types, entity_type_dict = self._get_type_vector(world, num_entities, encoded_table)
+            # entity_types: one-hot tensor with shape (batch_size, num_entities, num_types)
+            # entity_type_dict: Dict[int, int], mapping flattened_entity_index -> type_index
+            # These encode the same information, but for efficiency reasons later it's nice
+            # to have one version as a tensor and one that's accessible on the cpu.
+            entity_types, entity_type_dict = self._get_type_vector(world, num_entities, encoded_table)
 
-        entity_type_embeddings = self._type_params(entity_types.float())
-        projected_neighbor_embeddings = self._neighbor_params(embedded_neighbors.float())
-        # (batch_size, num_entities, embedding_dim)
-        entity_embeddings = torch.nn.functional.tanh(entity_type_embeddings + projected_neighbor_embeddings)
+            entity_type_embeddings = self._type_params(entity_types.float())
+            projected_neighbor_embeddings = self._neighbor_params(embedded_neighbors.float())
+            # (batch_size, num_entities, embedding_dim)
+            entity_embeddings = torch.nn.functional.tanh(entity_type_embeddings + projected_neighbor_embeddings)
 
 
-        # Compute entity and question word cosine similarity. Need to add a small value to
-        # to the table norm since there are padding values which cause a divide by 0.
-        embedded_table = embedded_table / (embedded_table.norm(dim=-1, keepdim=True) + 1e-13)
-        embedded_question = embedded_question / (embedded_question.norm(dim=-1, keepdim=True) + 1e-13)
-        question_entity_similarity = torch.bmm(embedded_table.view(batch_size,
-                                                                   num_entities * num_entity_tokens,
-                                                                   self._embedding_dim),
-                                               torch.transpose(embedded_question, 1, 2))
+            # Compute entity and question word cosine similarity. Need to add a small value to
+            # to the table norm since there are padding values which cause a divide by 0.
+            embedded_table = embedded_table / (embedded_table.norm(dim=-1, keepdim=True) + 1e-13)
+            embedded_question = embedded_question / (embedded_question.norm(dim=-1, keepdim=True) + 1e-13)
+            question_entity_similarity = torch.bmm(embedded_table.view(batch_size,
+                                                                       num_entities * num_entity_tokens,
+                                                                       self._embedding_dim),
+                                                   torch.transpose(embedded_question, 1, 2))
 
-        question_entity_similarity = question_entity_similarity.view(batch_size,
-                                                                     num_entities,
-                                                                     num_entity_tokens,
-                                                                     num_question_tokens)
+            question_entity_similarity = question_entity_similarity.view(batch_size,
+                                                                         num_entities,
+                                                                         num_entity_tokens,
+                                                                         num_question_tokens)
 
-        # (batch_size, num_entities, num_question_tokens)
-        question_entity_similarity_max_score, _ = torch.max(question_entity_similarity, 2)
-
-        # (batch_size, num_entities, num_question_tokens, num_features)
-        linking_features = table['linking']
-
-        linking_scores = question_entity_similarity_max_score
-
-        if self._use_neighbor_similarity_for_linking:
-            # The linking score is computed as a linear projection of two terms. The first is the
-            # maximum similarity score over the entity's words and the question token. The second
-            # is the maximum similarity over the words in the entity's neighbors and the question
-            # token.
-            #
-            # The second term, projected_question_neighbor_similarity, is useful when a column
-            # needs to be selected. For example, the question token might have no similarity with
-            # the column name, but is similar with the cells in the column.
-            #
-            # Note that projected_question_neighbor_similarity is intended to capture the same
-            # information as the related_column feature.
-            #
-            # Also note that this block needs to be _before_ the `linking_params` block, because
-            # we're overwriting `linking_scores`, not adding to it.
-
-            # (batch_size, num_entities, num_neighbors, num_question_tokens)
-            question_neighbor_similarity = util.batched_index_select(question_entity_similarity_max_score,
-                                                                     torch.abs(neighbor_indices))
             # (batch_size, num_entities, num_question_tokens)
-            question_neighbor_similarity_max_score, _ = torch.max(question_neighbor_similarity, 2)
-            projected_question_entity_similarity = self._question_entity_params(
-                    question_entity_similarity_max_score.unsqueeze(-1)).squeeze(-1)
-            projected_question_neighbor_similarity = self._question_neighbor_params(
-                    question_neighbor_similarity_max_score.unsqueeze(-1)).squeeze(-1)
-            linking_scores = projected_question_entity_similarity + projected_question_neighbor_similarity
+            question_entity_similarity_max_score, _ = torch.max(question_entity_similarity, 2)
 
-        if self._linking_params is not None:
-            feature_scores = self._linking_params(linking_features).squeeze(3)
-            linking_scores = linking_scores + feature_scores
+            # (batch_size, num_entities, num_question_tokens, num_features)
+            linking_features = table['linking']
 
-        # (batch_size, num_question_tokens, num_entities)
-        linking_probabilities = self._get_linking_probabilities(world, linking_scores.transpose(1, 2),
-                                                                question_mask, entity_type_dict)
+            linking_scores = question_entity_similarity_max_score
 
-        # (batch_size, num_question_tokens, embedding_dim)
-        link_embedding = util.weighted_sum(entity_embeddings, linking_probabilities)
+            if self._use_neighbor_similarity_for_linking:
+                # The linking score is computed as a linear projection of two terms. The first is the
+                # maximum similarity score over the entity's words and the question token. The second
+                # is the maximum similarity over the words in the entity's neighbors and the question
+                # token.
+                #
+                # The second term, projected_question_neighbor_similarity, is useful when a column
+                # needs to be selected. For example, the question token might have no similarity with
+                # the column name, but is similar with the cells in the column.
+                #
+                # Note that projected_question_neighbor_similarity is intended to capture the same
+                # information as the related_column feature.
+                #
+                # Also note that this block needs to be _before_ the `linking_params` block, because
+                # we're overwriting `linking_scores`, not adding to it.
 
-        """
-        # encoder_input = torch.cat([link_embedding, embedded_question], 2)
+                # (batch_size, num_entities, num_neighbors, num_question_tokens)
+                question_neighbor_similarity = util.batched_index_select(question_entity_similarity_max_score,
+                                                                         torch.abs(neighbor_indices))
+                # (batch_size, num_entities, num_question_tokens)
+                question_neighbor_similarity_max_score, _ = torch.max(question_neighbor_similarity, 2)
+                projected_question_entity_similarity = self._question_entity_params(
+                        question_entity_similarity_max_score.unsqueeze(-1)).squeeze(-1)
+                projected_question_neighbor_similarity = self._question_neighbor_params(
+                        question_neighbor_similarity_max_score.unsqueeze(-1)).squeeze(-1)
+                linking_scores = projected_question_entity_similarity + projected_question_neighbor_similarity
 
-        encoder_input = embedded_question
+            if self._linking_params is not None:
+                feature_scores = self._linking_params(linking_features).squeeze(3)
+                linking_scores = linking_scores + feature_scores
+
+            # (batch_size, num_question_tokens, num_entities)
+            linking_probabilities = self._get_linking_probabilities(world, linking_scores.transpose(1, 2),
+                                                                    question_mask, entity_type_dict)
+
+            # (batch_size, num_question_tokens, embedding_dim)
+            link_embedding = util.weighted_sum(entity_embeddings, linking_probabilities)
+
+            encoder_input = torch.cat([link_embedding, embedded_question], 2)
+        else:
+            encoder_input = embedded_question
 
         # (batch_size, question_length, encoder_output_dim)
         encoder_outputs = self._dropout(self._encoder(encoder_input, question_mask))
@@ -493,7 +495,8 @@ class FrictionQSemanticParser(Model):
         with -1 instead of 0, since 0 is a valid neighbor index.
         """
 
-        num_neighbors = 0
+        # Need a non-zero minimum number here to avoid exception
+        num_neighbors = 1
         for world in worlds:
             for entity in world.table_graph.entities:
                 if len(world.table_graph.neighbors[entity]) > num_neighbors:
@@ -880,6 +883,7 @@ class FrictionQSemanticParser(Model):
         num_linking_features = params.pop_int('num_linking_features', 0)
         rule_namespace = params.pop('rule_namespace', 'rule_labels')
         tables_directory = params.pop('tables_directory', '/wikitables/')
+        use_entities = params.pop('use_entities', False)
         params.assert_empty(cls.__name__)
         return cls(vocab,
                    question_embedder=question_embedder,
@@ -893,6 +897,7 @@ class FrictionQSemanticParser(Model):
                    use_neighbor_similarity_for_linking=use_neighbor_similarity_for_linking,
                    action_context=action_context,
                    dropout=dropout,
+                   use_entities=use_entities,
                    num_linking_features=num_linking_features,
                    rule_namespace=rule_namespace,
                    tables_directory=tables_directory)

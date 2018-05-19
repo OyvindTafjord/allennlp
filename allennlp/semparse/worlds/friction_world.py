@@ -11,7 +11,7 @@ from overrides import overrides
 import pyparsing
 
 from allennlp.semparse import util as semparse_util
-from allennlp.semparse.type_declarations import friction_type_declaration as types
+from allennlp.semparse.type_declarations.friction_type_declaration import FrictionTypeDeclaration
 from allennlp.semparse.worlds.world import World
 from allennlp.semparse.contexts import TableQuestionKnowledgeGraph
 
@@ -27,10 +27,11 @@ class FrictionWorld(World):
     """
     # pylint: disable=too-many-public-methods
 
-    def __init__(self, table_graph: TableQuestionKnowledgeGraph) -> None:
+    def __init__(self, table_graph: TableQuestionKnowledgeGraph, syntax: str = "WithType2") -> None:
+        self.types = FrictionTypeDeclaration(syntax)
         super(FrictionWorld, self).__init__(
-                                              global_type_signatures=types.COMMON_TYPE_SIGNATURE,
-                                              global_name_mapping=types.COMMON_NAME_MAPPING)
+                                            global_type_signatures=self.types.COMMON_TYPE_SIGNATURE,
+                                            global_name_mapping=self.types.COMMON_NAME_MAPPING)
         self.table_graph = table_graph
 
         # For every new Sempre column name seen, we update this counter to map it to a new NLTK name.
@@ -53,18 +54,26 @@ class FrictionWorld(World):
 
     @overrides
     def _map_name(self, name: str, keep_mapping: bool = False) -> str:
-        return types.COMMON_NAME_MAPPING[name] if name in types.COMMON_NAME_MAPPING else name
+        translated_name = name
+        if name in self.types.COMMON_NAME_MAPPING:
+            translated_name = self.types.COMMON_NAME_MAPPING[name]
+        elif name in self.local_name_mapping:
+            translated_name = self.local_name_mapping[name]
+        elif name.startswith("world"):
+            translated_name = "W1"+name[-1]
+            self._add_name_mapping(name, translated_name, self.types.WORLD_TYPE)
+        return translated_name
 
     def _get_curried_functions(self) -> Dict[Type, int]:
-        return types.CURRIED_FUNCTIONS
+        return self.types.CURRIED_FUNCTIONS
 
     @overrides
     def get_basic_types(self) -> Set[Type]:
-        return types.BASIC_TYPES
+        return self.types.BASIC_TYPES
 
     @overrides
     def get_valid_starting_types(self) -> Set[Type]:
-        return types.STARTING_TYPES
+        return self.types.STARTING_TYPES
 
     def is_table_entity(self, entity_name: str) -> bool:
         """
