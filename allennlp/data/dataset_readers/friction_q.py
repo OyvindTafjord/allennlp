@@ -14,6 +14,7 @@ import tqdm
 from allennlp.common import Params
 from allennlp.data.instance import Instance
 from allennlp.data.tokenizers import Token, Tokenizer, WordTokenizer
+from allennlp.data.tokenizers.word_stemmer import PorterStemmer
 from allennlp.data.token_indexers import TokenIndexer, SingleIdTokenIndexer
 from allennlp.data.fields import Field, TextField, KnowledgeGraphField, LabelField
 from allennlp.data.fields import IndexField, ListField, MetadataField, ProductionRuleField
@@ -60,6 +61,7 @@ class FrictionQDatasetReader(DatasetReader):
                  flip_answers: bool = False,
                  lf_syntax: str = None,
                  use_extracted_world_entities: bool = False,
+                 replace_world_entities: bool = False,
                  tokenizer: Tokenizer = None,
                  question_token_indexers: Dict[str, TokenIndexer] = None) -> None:
         super().__init__(lazy=lazy)
@@ -76,7 +78,12 @@ class FrictionQDatasetReader(DatasetReader):
         self._replace_blanks = replace_blanks
         self._flip_answers = flip_answers
         self._use_extracted_world_entities = use_extracted_world_entities
+        self._replace_world_entities = replace_world_entities
         self._lf_syntax = lf_syntax
+
+        if self._replace_world_entities:
+            self._stemmer = PorterStemmer().stemmer
+
 
     @overrides
     def _read(self, file_path):
@@ -89,8 +96,14 @@ class FrictionQDatasetReader(DatasetReader):
                     continue
                 question_datas = json.loads(line)
                 # Skip training instances without world entities if needing them
-                if self._use_extracted_world_entities and "world_extractions" not in question_datas:
+                if (self._use_extracted_world_entities or self._replace_world_entities) \
+                        and "world_extractions" not in question_datas:
                     continue
+                if (self._replace_world_entities):
+                    new_q = self._replace_stemmed_entities(question_datas['question'],
+                                                           question_datas['world_extractions'],
+                                                           self._stemmer)
+                    question_datas['question'] = new_q
                 if self._split_question:
                     question_datas = self._split_instance(question_datas, self._replace_blanks)
                 elif self._flip_answers:
@@ -105,7 +118,8 @@ class FrictionQDatasetReader(DatasetReader):
                     question = self._fix_question(question)
                     question_id = question_data['id']
                     logical_forms = question_data['logical_forms']
-                    if (self._first_lf_only or self._use_extracted_world_entities) and len(logical_forms) > 1:
+                    if (self._first_lf_only or self._use_extracted_world_entities
+                            or self._replace_world_entities) and len(logical_forms) > 1:
                         logical_forms = [logical_forms[0]]
                     # Hacky filter to ignore "type2" questions
                     if self._filter_type2 and len(logical_forms) > 0 and "(and " in logical_forms[0]:
@@ -245,6 +259,19 @@ class FrictionQDatasetReader(DatasetReader):
         }
         return [json, json_new]
 
+    entity_name_map = {"world1": "worldone","world2":"worldtwo"}
+
+    @staticmethod
+    def _replace_stemmed_entities(question, entities, stemmer):
+        entities_stemmed = {stemmer.stem(value): FrictionQDatasetReader.entity_name_map.get(key, key)
+                            for key, value in entities.items()}
+
+        def substitute(match):
+            replacement = entities_stemmed.get(stemmer.stem(match.group(0)))
+            return replacement if replacement else match.group(0)
+
+        return re.sub(r"\w+", substitute, question)
+
     @classmethod
     def from_params(cls, params: Params) -> 'FrictionQDatasetReader':
         lazy = params.pop('lazy', False)
@@ -254,6 +281,7 @@ class FrictionQDatasetReader(DatasetReader):
         replace_blanks = params.pop('replace_blanks', False)
         flip_answers = params.pop('flip_answers', False)
         use_extracted_world_entities = params.pop('use_extracted_world_entities', False)
+        replace_world_entities = params.pop('replace_world_entities', False)
         lf_syntax = params.pop('lf_syntax', None)
         tokenizer = Tokenizer.from_params(params.pop('tokenizer', {}))
         question_token_indexers = TokenIndexer.dict_from_params(params.pop('question_token_indexers', {}))
@@ -265,6 +293,7 @@ class FrictionQDatasetReader(DatasetReader):
                                       replace_blanks=replace_blanks,
                                       flip_answers=flip_answers,
                                       use_extracted_world_entities=use_extracted_world_entities,
+                                      replace_world_entities=replace_world_entities,
                                       lf_syntax=lf_syntax,
                                       tokenizer=tokenizer,
                                       question_token_indexers=question_token_indexers)
