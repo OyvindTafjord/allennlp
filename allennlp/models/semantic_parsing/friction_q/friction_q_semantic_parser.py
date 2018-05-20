@@ -13,12 +13,13 @@ from allennlp.data.fields.production_rule_field import ProductionRuleArray
 from allennlp.models.model import Model
 from allennlp.models.semantic_parsing.friction_q.friction_q_decoder_step import FrictionQDecoderStep
 from allennlp.models.semantic_parsing.friction_q.friction_q_decoder_state import FrictionQDecoderState
+from allennlp.models.semantic_parsing.friction_q.friction_q_rnn_state import FrictionQRnnState
 from allennlp.modules import TextFieldEmbedder, Seq2SeqEncoder, FeedForward, Embedding
 from allennlp.modules.seq2vec_encoders import Seq2VecEncoder, BagOfEmbeddingsEncoder
 from allennlp.modules.similarity_functions import SimilarityFunction
 from allennlp.modules.time_distributed import TimeDistributed
 from allennlp.nn import util
-from allennlp.nn.decoding import BeamSearch, GrammarState, RnnState
+from allennlp.nn.decoding import BeamSearch, GrammarState
 from allennlp.nn.decoding.decoder_trainers import MaximumMarginalLikelihood
 from allennlp.semparse.type_declarations import type_declaration
 from allennlp.semparse.type_declarations.type_declaration import START_SYMBOL
@@ -87,7 +88,7 @@ class FrictionQSemanticParser(Model):
                  max_decoding_steps: int,
                  attention_function: SimilarityFunction,
                  use_neighbor_similarity_for_linking: bool = False,
-                 action_context: str = None,
+                 action_similarity_dim: int = 0,
                  dropout: float = 0.0,
                  num_linking_features: int = 0,
                  use_entities: bool = False,
@@ -111,17 +112,14 @@ class FrictionQSemanticParser(Model):
 
         self._action_padding_index = -1  # the padding value used by IndexField
         num_actions = vocab.get_vocab_size(self._rule_namespace)
+        self._num_actions = num_actions
         self._action_embedder = Embedding(num_embeddings=num_actions, embedding_dim=action_embedding_dim)
         # We are tying the action embeddings used for input and output
         # self._output_action_embedder = Embedding(num_embeddings=num_actions, embedding_dim=action_embedding_dim)
         self._output_action_embedder = self._action_embedder  # tied weights
         self._action_biases = Embedding(num_embeddings=num_actions, embedding_dim=1)
 
-        # action context is set to attended question
-        if action_context == 'attended_question':
-            self._action_context_dim = encoder.get_output_dim()
-        else:
-            self._action_context_dim = 0
+        self._action_similarity_dim = action_similarity_dim
 
         # This is what we pass as input in the first step of decoding, when we don't have a
         # previous action, or a previous question attention.
@@ -158,11 +156,12 @@ class FrictionQSemanticParser(Model):
 
         self._decoder_step = FrictionQDecoderStep(encoder_output_dim=self._encoder.get_output_dim(),
                                                    action_embedding_dim=action_embedding_dim,
-                                                   action_context_dim=self._action_context_dim,
+                                                   num_actions=num_actions,
                                                    attention_function=attention_function,
                                                    num_start_types=self._num_start_types,
                                                    num_entity_types=self._num_entity_types,
                                                    mixture_feedforward=mixture_feedforward,
+                                                   action_similarity_dim=action_similarity_dim,
                                                    dropout=dropout)
 
     @overrides
@@ -332,13 +331,6 @@ class FrictionQSemanticParser(Model):
 
         action_embeddings, output_action_embeddings, action_biases, action_indices = self._embed_actions(actions)
 
-        if self._action_context_dim > 0:
-            # (batch_size, num_unique_actions, self._action_context_dim)
-            action_contexts = torch.stack([self._first_attended_question for _ in range(len(action_embeddings))])
-            action_contexts = [action_contexts for _ in range(batch_size)]
-        else:
-            action_contexts = None
-
         # Fake linking_scores and entity_type_dict added for downstream code to not object
         linking_scores = question_mask.clone().fill_(0).unsqueeze(1)
         entity_type_dict = dict()
@@ -369,13 +361,20 @@ class FrictionQSemanticParser(Model):
         #                                                          encoder_outputs,
         #                                                          question_mask)
 
+        # Initial action_contexts set to 0, will later be the attended question when action was applied
+        if self._action_similarity_dim > 0:
+            action_contexts = Variable(torch.zeros(self._num_actions, self._encoder.get_output_dim()))
+        else:
+            action_contexts = None
+
         for i in range(batch_size):
-            initial_rnn_state.append(RnnState(final_encoder_output[i],
+            initial_rnn_state.append(FrictionQRnnState(final_encoder_output[i],
                                               memory_cell[i],
                                               self._first_action_embedding,
                                               self._first_attended_question,
                                               encoder_output_list,
-                                              question_mask_list))
+                                              question_mask_list,
+                                              action_contexts))
         initial_grammar_state = [self._create_grammar_state(world[i], actions[i])
                                  for i in range(batch_size)]
         initial_state = FrictionQDecoderState(batch_indices=list(range(batch_size)),
@@ -384,7 +383,6 @@ class FrictionQSemanticParser(Model):
                                                rnn_state=initial_rnn_state,
                                                grammar_state=initial_grammar_state,
                                                action_embeddings=action_embeddings,
-                                               action_contexts=action_contexts,
                                                output_action_embeddings=output_action_embeddings,
                                                action_biases=action_biases,
                                                action_indices=action_indices,
@@ -865,7 +863,7 @@ class FrictionQSemanticParser(Model):
         entity_encoder = Seq2VecEncoder.from_params(params.pop('entity_encoder'))
         max_decoding_steps = params.pop_int("max_decoding_steps")
         mixture_feedforward_type = params.pop('mixture_feedforward', None)
-        action_context = params.pop('action_context', None)
+        action_similarity_dim = params.pop('action_similarity_dim', 0)
         if mixture_feedforward_type is not None:
             mixture_feedforward = FeedForward.from_params(mixture_feedforward_type)
         else:
@@ -895,7 +893,7 @@ class FrictionQSemanticParser(Model):
                    max_decoding_steps=max_decoding_steps,
                    attention_function=attention_function,
                    use_neighbor_similarity_for_linking=use_neighbor_similarity_for_linking,
-                   action_context=action_context,
+                   action_similarity_dim=action_similarity_dim,
                    dropout=dropout,
                    use_entities=use_entities,
                    num_linking_features=num_linking_features,
