@@ -87,7 +87,7 @@ class FrictionQDatasetReader(DatasetReader):
 
     @overrides
     def _read(self, file_path):
-        debug = 0
+        debug = 5
         with open(file_path, "r") as data_file:
             logger.info("Reading instances from lines in file: %s", file_path)
             for line in tqdm.tqdm(data_file):
@@ -110,9 +110,9 @@ class FrictionQDatasetReader(DatasetReader):
                     question_datas = self._do_flip_answers(question_datas)
                 else:
                     question_datas = [question_datas]
-                debug += 1
-                if debug < 5:
-                    print(question_datas)
+                debug -= 1
+                if debug > 0:
+                    logger.info(question_datas)
                 for question_data in question_datas:
                     question = question_data['question']
                     question = self._fix_question(question)
@@ -146,6 +146,7 @@ class FrictionQDatasetReader(DatasetReader):
         """
         # pylint: disable=arguments-differ
         tokenized_question = tokenized_question or self._tokenizer.tokenize(question.lower())
+        additional_metadata['question_tokens'] = [token.text for token in tokenized_question]
         question_field = TextField(tokenized_question, self._question_token_indexers)
         if self._use_extracted_world_entities:
             neighbors = {key: [] for key in world_extractions.keys()}
@@ -162,7 +163,7 @@ class FrictionQDatasetReader(DatasetReader):
                                           tokenized_question,
                                           self._table_token_indexers,
                                           tokenizer=self._tokenizer)
-
+        # print(table_field._compute_linking_features())
         world_field = MetadataField(world)
 
         production_rule_fields: List[Field] = []

@@ -33,7 +33,7 @@ import torch
 import tqdm
 
 from allennlp.commands.subcommand import Subcommand
-from allennlp.common.util import prepare_environment
+from allennlp.common.util import prepare_environment, sanitize
 from allennlp.data import Instance
 from allennlp.data.dataset_readers.dataset_reader import DatasetReader
 from allennlp.data.iterators import DataIterator
@@ -114,12 +114,17 @@ def _persist_data(file_handle, metadata, model_output, metadata_fields_list) -> 
         for index, meta in enumerate(metadata):
             res = {}
             res["id"] = meta.get("id", "NA")
+            res["question"] = meta.get("question", "NA")
             # res["slot_values_text_scrambled"] = meta.get("slot_values_text_scrambled", [])
             # We persist model output which matches batch_size in length and is not a Variable
             for key, value in model_output.items():
-                if len(value) == batch_size and key in metadata_fields_list:
-                    val = value[index]
-                    res[key] = val
+                if key in metadata_fields_list:
+                    if len(value) == batch_size:
+                        val = value[index]
+                        res[key] = sanitize(val)
+                    else:
+                        res[key] = sanitize(value)
+                        res["batch_index"] = index
             file_handle.write(json.dumps(res))
             file_handle.write("\n")
 

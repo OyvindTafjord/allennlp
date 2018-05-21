@@ -90,7 +90,7 @@ class FrictionQSemanticParser(Model):
                  use_neighbor_similarity_for_linking: bool = False,
                  action_similarity_dim: int = 0,
                  dropout: float = 0.0,
-                 num_linking_features: int = 0,
+                 num_linking_features: int = 10,
                  use_entities: bool = False,
                  rule_namespace: str = 'rule_labels',
                  tables_directory: str = '/wikitables/') -> None:
@@ -318,6 +318,10 @@ class FrictionQSemanticParser(Model):
         else:
             encoder_input = embedded_question
 
+            # Fake linking_scores and entity_type_dict added for downstream code to not object
+            linking_scores = question_mask.clone().fill_(0).unsqueeze(1)
+            entity_type_dict = dict()
+
         # (batch_size, question_length, encoder_output_dim)
         encoder_outputs = self._dropout(self._encoder(encoder_input, question_mask))
 
@@ -330,10 +334,6 @@ class FrictionQSemanticParser(Model):
         initial_score = Variable(embedded_question.data.new(batch_size).fill_(0))
 
         action_embeddings, output_action_embeddings, action_biases, action_indices = self._embed_actions(actions)
-
-        # Fake linking_scores and entity_type_dict added for downstream code to not object
-        linking_scores = question_mask.clone().fill_(0).unsqueeze(1)
-        entity_type_dict = dict()
 
         _, num_entities, num_question_tokens = linking_scores.size()
         flattened_linking_scores, actions_to_entities = self._map_entity_productions(linking_scores,
@@ -420,14 +420,16 @@ class FrictionQSemanticParser(Model):
             outputs['debug_info'] = []
             outputs['entities'] = []
             outputs['linking_scores'] = linking_scores
-            # if self._linking_params is not None:
-            #     outputs['feature_scores'] = feature_scores
+            outputs['linking_probabilities'] = linking_probabilities
+            if self._linking_params is not None:
+                outputs['feature_scores'] = feature_scores
             # outputs['similarity_scores'] = question_entity_similarity_max_score
             outputs['logical_form'] = []
             outputs['denotation_acc'] = []
             outputs['score'] = []
             outputs['parse_acc'] = []
             outputs['answer_index'] = []
+            outputs['question_tokens'] = []
             for i in range(batch_size):
                 # Decoding may not have terminated with any completed logical forms, if `num_steps`
                 # isn't long enough (or if the model is not trained enough and gets into an
@@ -449,6 +451,8 @@ class FrictionQSemanticParser(Model):
                         logical_form = 'Error producing logical form'
                     denotation_accuracy = 0
                     predicted_answer_index = FrictionWorld.execute(logical_form)
+                    if metadata is not None and 'question_tokens' in metadata[i]:
+                        outputs['question_tokens'].append(metadata[i]['question_tokens'])
                     if metadata is not None and 'answer_index' in metadata[i]:
                         answer_index = metadata[i]['answer_index']
                         denotation_accuracy = self._denotation_match(predicted_answer_index, answer_index)
@@ -878,7 +882,7 @@ class FrictionQSemanticParser(Model):
             attention_function = None
         use_neighbor_similarity_for_linking = params.pop_bool('use_neighbor_similarity_for_linking', False)
         dropout = params.pop_float('dropout', 0.0)
-        num_linking_features = params.pop_int('num_linking_features', 0)
+        num_linking_features = params.pop_int('num_linking_features', 10)
         rule_namespace = params.pop('rule_namespace', 'rule_labels')
         tables_directory = params.pop('tables_directory', '/wikitables/')
         use_entities = params.pop('use_entities', False)
