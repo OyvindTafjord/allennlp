@@ -321,6 +321,7 @@ class FrictionQSemanticParser(Model):
             # Fake linking_scores and entity_type_dict added for downstream code to not object
             linking_scores = question_mask.clone().fill_(0).unsqueeze(1)
             entity_type_dict = dict()
+            linking_probabilities = None
 
         # (batch_size, question_length, encoder_output_dim)
         encoder_outputs = self._dropout(self._encoder(encoder_input, question_mask))
@@ -419,9 +420,9 @@ class FrictionQSemanticParser(Model):
             outputs['best_action_sequence'] = []
             outputs['debug_info'] = []
             outputs['entities'] = []
-            outputs['linking_scores'] = linking_scores
-            outputs['linking_probabilities'] = linking_probabilities
             if self._linking_params is not None:
+                outputs['linking_scores'] = linking_scores
+                outputs['linking_probabilities'] = linking_probabilities
                 outputs['feature_scores'] = feature_scores
             # outputs['similarity_scores'] = question_entity_similarity_max_score
             outputs['logical_form'] = []
@@ -882,10 +883,13 @@ class FrictionQSemanticParser(Model):
             attention_function = None
         use_neighbor_similarity_for_linking = params.pop_bool('use_neighbor_similarity_for_linking', False)
         dropout = params.pop_float('dropout', 0.0)
-        num_linking_features = params.pop_int('num_linking_features', 10)
+        use_entities = params.pop('use_entities', False)
+        default_num_linking_features = 10
+        if not use_entities:
+            default_num_linking_features = 0
+        num_linking_features = params.pop_int('num_linking_features', default_num_linking_features)
         rule_namespace = params.pop('rule_namespace', 'rule_labels')
         tables_directory = params.pop('tables_directory', '/wikitables/')
-        use_entities = params.pop('use_entities', False)
         params.assert_empty(cls.__name__)
         return cls(vocab,
                    question_embedder=question_embedder,

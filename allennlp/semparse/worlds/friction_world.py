@@ -27,7 +27,8 @@ class FrictionWorld(World):
     """
     # pylint: disable=too-many-public-methods
 
-    def __init__(self, table_graph: TableQuestionKnowledgeGraph, syntax: str = "WithType2") -> None:
+    def __init__(self, table_graph: TableQuestionKnowledgeGraph, syntax: str = "with_type_2") -> None:
+        if syntax is None: syntax = "with_type_2"
         self.types = FrictionTypeDeclaration(syntax)
         super(FrictionWorld, self).__init__(
                                             global_type_signatures=self.types.COMMON_TYPE_SIGNATURE,
