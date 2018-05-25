@@ -486,6 +486,11 @@ class Trainer:
 
             # Log parameter values to Tensorboard
             if batch_num_total % self._summary_interval == 0:
+                if True:
+                    optimizer_params = self._optimizer.param_groups[0]
+                    if "lr" in optimizer_params:
+                        self._tensorboard.add_train_scalar("learning_rate",
+                                                           optimizer_params["lr"], batch_num_total)
                 self._parameter_and_gradient_statistics_to_tensorboard(batch_num_total, batch_grad_norm)
                 self._tensorboard.add_train_scalar("loss/loss_train", metrics["loss"], batch_num_total)
                 self._metrics_to_tensorboard(batch_num_total,
