@@ -29,6 +29,7 @@ class FrictionWorld(World):
 
     def __init__(self, table_graph: TableQuestionKnowledgeGraph, syntax: str = "with_type_2") -> None:
         if syntax is None: syntax = "with_type_2"
+        self._syntax = syntax
         self.types = FrictionTypeDeclaration(syntax)
         super(FrictionWorld, self).__init__(
                                             global_type_signatures=self.types.COMMON_TYPE_SIGNATURE,
@@ -62,7 +63,11 @@ class FrictionWorld(World):
             translated_name = self.local_name_mapping[name]
         elif name.startswith("world"):
             translated_name = "W1"+name[-1]
-            self._add_name_mapping(name, translated_name, self.types.WORLD_TYPE)
+            if "_world_entities" in self._syntax:
+                self._add_name_mapping(name, translated_name, self.types.WORLD_TYPE)
+            else:
+                # Hack to avoid world entities
+                self._add_name_mapping(name, translated_name, self.types.VAR_TYPE)
         return translated_name
 
     def _get_curried_functions(self) -> Dict[Type, int]:
