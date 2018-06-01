@@ -2,11 +2,12 @@
 Reader for Friction questions
 """
 
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, List, Optional
 import json
 import logging
 import re
 
+import numpy as np
 from overrides import overrides
 
 import tqdm
@@ -16,7 +17,7 @@ from allennlp.data.instance import Instance
 from allennlp.data.tokenizers import Token, Tokenizer, WordTokenizer
 from allennlp.data.tokenizers.word_stemmer import PorterStemmer
 from allennlp.data.token_indexers import TokenIndexer, SingleIdTokenIndexer
-from allennlp.data.fields import Field, TextField, KnowledgeGraphField, LabelField
+from allennlp.data.fields import ArrayField, Field, TextField, KnowledgeGraphField, LabelField
 from allennlp.data.fields import IndexField, ListField, MetadataField, ProductionRuleField
 from allennlp.data.dataset_readers.dataset_reader import DatasetReader
 from allennlp.data.dataset_readers.seq2seq import START_SYMBOL, END_SYMBOL
@@ -48,6 +49,12 @@ class FrictionQDatasetReader(DatasetReader):
         If true, doubles the dataset by flipping the answer options
     use_extracted_world_entities : ``bool`` (optional, default=False)
         Use preprocessed world entity strings as part of the LFs
+    replace_world_entities : ``bool`` (optional, default=False)
+        Replace world entities (w/stemming) with "worldone" and "worldtwo" directly in the question
+    entity_tag_mode : ``str`` (optional, default=None)
+        If set, add a field for entity tags ("simple" = 1.0 value for world1 and world2,
+        "simple_collapsed" = single 1.0 value for any world), tagging based on token matches
+        with extracted entities
     lf_syntax: ``str``
         Which LF formalism to use, see friction types for details
 
@@ -62,6 +69,7 @@ class FrictionQDatasetReader(DatasetReader):
                  lf_syntax: str = None,
                  use_extracted_world_entities: bool = False,
                  replace_world_entities: bool = False,
+                 entity_tag_mode: Optional[str] = None,
                  tokenizer: Tokenizer = None,
                  question_token_indexers: Dict[str, TokenIndexer] = None) -> None:
         super().__init__(lazy=lazy)
@@ -80,6 +88,7 @@ class FrictionQDatasetReader(DatasetReader):
         self._use_extracted_world_entities = use_extracted_world_entities
         self._replace_world_entities = replace_world_entities
         self._lf_syntax = lf_syntax
+        self._entity_tag_mode = entity_tag_mode
 
         if self._replace_world_entities:
             self._stemmer = PorterStemmer().stemmer
@@ -163,6 +172,7 @@ class FrictionQDatasetReader(DatasetReader):
                                           tokenized_question,
                                           self._table_token_indexers,
                                           tokenizer=self._tokenizer)
+
         # print(table_field._compute_linking_features())
         world_field = MetadataField(world)
 
@@ -178,6 +188,15 @@ class FrictionQDatasetReader(DatasetReader):
                   'table': table_field,
                   'world': world_field,
                   'actions': action_field}
+
+        if self._entity_tag_mode is not None:
+            linking_features = table_field.linking_features
+            entity_tags = self._get_entity_tags(linking_features)
+            if self._entity_tag_mode == "simple_collapsed":
+                entity_tags = [[max(tags)] for tags in entity_tags]
+            entity_tag_field = ArrayField(np.array(entity_tags))
+            fields['entity_tag'] = entity_tag_field
+
         if logical_forms:
             action_map = {action.rule: i for i, action in enumerate(action_field.field_list)}
             action_sequence_fields: List[Field] = []
@@ -208,6 +227,26 @@ class FrictionQDatasetReader(DatasetReader):
         res = re.sub(r" *_{3,} *", " blankblank ", res)
         return res
 
+
+    @staticmethod
+    def _get_entity_tags(linking_features: List[List[List[float]]]) -> List[List[float]]:
+        """
+        Simple heuristic on linking features to get entity tag. Code could be simpler using
+        proper arrays here.
+        """
+        res = [[0.0 for x in entity_token] for entity_token in zip(*linking_features)]
+        for token_index, entity_features in enumerate(zip(*linking_features)):
+            score_max = 0
+            pos = None
+            for index, features in enumerate(entity_features):
+                # Use the two span features with cutoff of 0.5
+                score = max(features[8:])
+                if score > score_max and score >= 0.5:
+                    pos = index
+                    score_max = score
+            if pos is not None:
+                res[token_index][pos] = 1.0
+        return res
 
     @staticmethod
     def _make_action_sequence_field(action_sequence: List[str]) -> ListField:
@@ -303,6 +342,7 @@ class FrictionQDatasetReader(DatasetReader):
         flip_answers = params.pop('flip_answers', False)
         use_extracted_world_entities = params.pop('use_extracted_world_entities', False)
         replace_world_entities = params.pop('replace_world_entities', False)
+        entity_tag_mode = params.pop('entity_tag_mode', None)
         lf_syntax = params.pop('lf_syntax', None)
         tokenizer = Tokenizer.from_params(params.pop('tokenizer', {}))
         question_token_indexers = TokenIndexer.dict_from_params(params.pop('question_token_indexers', {}))
@@ -316,5 +356,6 @@ class FrictionQDatasetReader(DatasetReader):
                                       use_extracted_world_entities=use_extracted_world_entities,
                                       replace_world_entities=replace_world_entities,
                                       lf_syntax=lf_syntax,
+                                      entity_tag_mode=entity_tag_mode,
                                       tokenizer=tokenizer,
                                       question_token_indexers=question_token_indexers)

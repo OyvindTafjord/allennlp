@@ -91,6 +91,8 @@ class FrictionQSemanticParser(Model):
                  action_similarity_dim: int = 0,
                  dropout: float = 0.0,
                  num_linking_features: int = 10,
+                 num_entity_tags: int = 0,
+                 entity_tag_output: bool = False,
                  use_entities: bool = False,
                  rule_namespace: str = 'rule_labels',
                  tables_directory: str = '/wikitables/') -> None:
@@ -121,13 +123,6 @@ class FrictionQSemanticParser(Model):
 
         self._action_similarity_dim = action_similarity_dim
 
-        # This is what we pass as input in the first step of decoding, when we don't have a
-        # previous action, or a previous question attention.
-        self._first_action_embedding = torch.nn.Parameter(torch.FloatTensor(action_embedding_dim))
-        self._first_attended_question = torch.nn.Parameter(torch.FloatTensor(encoder.get_output_dim()))
-        torch.nn.init.normal(self._first_action_embedding)
-        torch.nn.init.normal(self._first_attended_question)
-
         self._use_entities= use_entities
 
         if self._use_entities:
@@ -154,7 +149,20 @@ class FrictionQSemanticParser(Model):
 
         self._decoder_trainer = MaximumMarginalLikelihood()
 
-        self._decoder_step = FrictionQDecoderStep(encoder_output_dim=self._encoder.get_output_dim(),
+        self._encoder_output_dim = self._encoder.get_output_dim()
+        if entity_tag_output:
+            self._encoder_output_dim += num_entity_tags
+
+        self._entity_tag_output = entity_tag_output
+
+        # This is what we pass as input in the first step of decoding, when we don't have a
+        # previous action, or a previous question attention.
+        self._first_action_embedding = torch.nn.Parameter(torch.FloatTensor(action_embedding_dim))
+        self._first_attended_question = torch.nn.Parameter(torch.FloatTensor(self._encoder_output_dim))
+        torch.nn.init.normal(self._first_action_embedding)
+        torch.nn.init.normal(self._first_attended_question)
+
+        self._decoder_step = FrictionQDecoderStep(encoder_output_dim=self._encoder_output_dim,
                                                    action_embedding_dim=action_embedding_dim,
                                                    num_actions=num_actions,
                                                    attention_function=attention_function,
@@ -170,6 +178,7 @@ class FrictionQSemanticParser(Model):
                 table: Dict[str, torch.LongTensor],
                 world: List[FrictionWorld],
                 actions: List[List[ProductionRuleArray]],
+                entity_tag: List[torch.Tensor] = None,
                 example_lisp_string: List[str] = None,
                 target_action_sequences: torch.LongTensor = None,
                 metadata: List[Dict[str, Any]] = None) -> Dict[str, torch.Tensor]:
@@ -316,7 +325,10 @@ class FrictionQSemanticParser(Model):
 
             encoder_input = torch.cat([link_embedding, embedded_question], 2)
         else:
-            encoder_input = embedded_question
+            if entity_tag is not None and not self._entity_tag_output:
+                encoder_input = torch.cat([embedded_question, entity_tag], 2)
+            else:
+                encoder_input = embedded_question
 
             # Fake linking_scores and entity_type_dict added for downstream code to not object
             linking_scores = question_mask.clone().fill_(0).unsqueeze(1)
@@ -326,11 +338,15 @@ class FrictionQSemanticParser(Model):
         # (batch_size, question_length, encoder_output_dim)
         encoder_outputs = self._dropout(self._encoder(encoder_input, question_mask))
 
+        if self._entity_tag_output and entity_tag is not None:
+            encoder_outputs = torch.cat([encoder_outputs, entity_tag], 2)
+
         # This will be our initial hidden state and memory cell for the decoder LSTM.
         final_encoder_output = util.get_final_encoder_states(encoder_outputs,
                                                              question_mask,
                                                              self._encoder.is_bidirectional())
-        memory_cell = Variable(encoder_outputs.data.new(batch_size, self._encoder.get_output_dim()).fill_(0))
+
+        memory_cell = Variable(encoder_outputs.data.new(batch_size, self._encoder_output_dim).fill_(0))
 
         initial_score = Variable(embedded_question.data.new(batch_size).fill_(0))
 
@@ -364,7 +380,7 @@ class FrictionQSemanticParser(Model):
 
         # Initial action_contexts set to 0, will later be the attended question when action was applied
         if self._action_similarity_dim > 0:
-            action_contexts = Variable(torch.zeros(self._num_actions, self._encoder.get_output_dim()))
+            action_contexts = Variable(torch.zeros(self._num_actions, self._encoder_output_dim))
         else:
             action_contexts = None
 
@@ -422,8 +438,9 @@ class FrictionQSemanticParser(Model):
             outputs['entities'] = []
             if self._linking_params is not None:
                 outputs['linking_scores'] = linking_scores
-                outputs['linking_probabilities'] = linking_probabilities
                 outputs['feature_scores'] = feature_scores
+            if self._use_entities:
+                outputs['linking_probabilities'] = linking_probabilities
             # outputs['similarity_scores'] = question_entity_similarity_max_score
             outputs['logical_form'] = []
             outputs['denotation_acc'] = []
@@ -888,6 +905,8 @@ class FrictionQSemanticParser(Model):
         if not use_entities:
             default_num_linking_features = 0
         num_linking_features = params.pop_int('num_linking_features', default_num_linking_features)
+        num_entity_tags = params.pop_int('num_entity_tags', 0)
+        entity_tag_output = params.pop_bool('entity_tag_output', False)
         rule_namespace = params.pop('rule_namespace', 'rule_labels')
         tables_directory = params.pop('tables_directory', '/wikitables/')
         params.assert_empty(cls.__name__)
@@ -905,5 +924,7 @@ class FrictionQSemanticParser(Model):
                    dropout=dropout,
                    use_entities=use_entities,
                    num_linking_features=num_linking_features,
+                   num_entity_tags=num_entity_tags,
+                   entity_tag_output=entity_tag_output,
                    rule_namespace=rule_namespace,
                    tables_directory=tables_directory)
