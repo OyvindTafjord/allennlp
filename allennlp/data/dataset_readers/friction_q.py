@@ -9,6 +9,7 @@ import re
 
 import numpy as np
 from overrides import overrides
+import random
 
 import tqdm
 
@@ -23,6 +24,7 @@ from allennlp.data.dataset_readers.dataset_reader import DatasetReader
 from allennlp.data.dataset_readers.seq2seq import START_SYMBOL, END_SYMBOL
 from allennlp.semparse.contexts import TableQuestionKnowledgeGraph
 from allennlp.semparse.contexts.knowledge_graph import KnowledgeGraph
+from allennlp.semparse.friction_q_util import WorldExtractor
 from allennlp.semparse.worlds import FrictionWorld
 
 
@@ -51,6 +53,10 @@ class FrictionQDatasetReader(DatasetReader):
         Use preprocessed world entity strings as part of the LFs
     replace_world_entities : ``bool`` (optional, default=False)
         Replace world entities (w/stemming) with "worldone" and "worldtwo" directly in the question
+    extract_world_entities : ``bool`` (optional, default=False)
+        Extract world entities using heuristics and align to annotated world literals
+    skip_world_alignment : ``bool`` (optional, default=False)
+        Don't attempt to align world entities to literals, thus use both LFs
     entity_tag_mode : ``str`` (optional, default=None)
         If set, add a field for entity tags ("simple" = 1.0 value for world1 and world2,
         "simple_collapsed" = single 1.0 value for any world), tagging based on token matches
@@ -68,7 +74,10 @@ class FrictionQDatasetReader(DatasetReader):
                  flip_answers: bool = False,
                  lf_syntax: str = None,
                  use_extracted_world_entities: bool = False,
+                 extract_world_entities: bool = False,
                  replace_world_entities: bool = False,
+                 skip_world_alignment: bool = False,
+                 gold_worlds: bool = False,
                  entity_tag_mode: Optional[str] = None,
                  tokenizer: Tokenizer = None,
                  question_token_indexers: Dict[str, TokenIndexer] = None) -> None:
@@ -87,11 +96,19 @@ class FrictionQDatasetReader(DatasetReader):
         self._flip_answers = flip_answers
         self._use_extracted_world_entities = use_extracted_world_entities
         self._replace_world_entities = replace_world_entities
+        self._skip_world_alignment = skip_world_alignment
         self._lf_syntax = lf_syntax
         self._entity_tag_mode = entity_tag_mode
+        self._extract_world_entities = extract_world_entities
+        self._gold_worlds = gold_worlds
+
+        self._random_lf_pick = False
 
         if self._replace_world_entities:
             self._stemmer = PorterStemmer().stemmer
+
+        if self._extract_world_entities:
+            self._world_extractor = WorldExtractor()
 
 
     @overrides
@@ -104,11 +121,35 @@ class FrictionQDatasetReader(DatasetReader):
                 if not line:
                     continue
                 question_datas = json.loads(line)
+                skip_alignment = self._skip_world_alignment
+                if self._gold_worlds:
+                    question_datas['world_extractions'] = question_datas['world_literals']
+                if self._extract_world_entities:
+                    extracted = self._world_extractor.extract(question_datas['question'])
+                    extractions = {}
+                    if 'world_literals' in question_datas: # and not skip_alignment:
+                        literals = question_datas['world_literals']
+                        aligned = self._world_extractor.align(extracted, literals)
+                        # If we haven't aligned two different things (including None), give up
+                        if len(set(aligned)) < 2:
+                            continue
+                        aligned_dict = {key: value for key, value in zip(aligned, extracted)}
+                        for key in literals.keys():
+                            # if key is missing, then it must be assigned to None per above logic
+                            value = aligned_dict[key] if key in aligned_dict else aligned_dict[None]
+                            extractions[key] = value
+                    else:
+                        if len(extracted) < 2 or extracted[0] == extracted[1]:
+                            continue
+                        extractions = {"world1": extracted[0], "world2": extracted[1]}
+                        skip_alignment = True
+                    question_datas['world_extractions'] = extractions
+
                 # Skip training instances without world entities if needing them
                 if (self._use_extracted_world_entities or self._replace_world_entities) \
                         and "world_extractions" not in question_datas:
                     continue
-                if (self._replace_world_entities):
+                if self._replace_world_entities:
                     new_q = self._replace_stemmed_entities(question_datas['question'],
                                                            question_datas['world_extractions'],
                                                            self._stemmer)
@@ -128,8 +169,13 @@ class FrictionQDatasetReader(DatasetReader):
                     question_id = question_data['id']
                     logical_forms = question_data['logical_forms']
                     if (self._first_lf_only or self._use_extracted_world_entities
-                            or self._replace_world_entities) and len(logical_forms) > 1:
-                        logical_forms = [logical_forms[0]]
+                            or self._replace_world_entities) and not skip_alignment and len(logical_forms) > 1:
+                        if self._random_lf_pick:
+                            logical_forms = [random.choice(logical_forms)]
+                        else:
+                            logical_forms = [logical_forms[0]]
+                    if debug > 0:
+                        logger.info(logical_forms)
                     # Hacky filter to ignore "type2" questions
                     if self._filter_type2 and len(logical_forms) > 0 and "(and " in logical_forms[0]:
                         continue
@@ -341,7 +387,10 @@ class FrictionQDatasetReader(DatasetReader):
         replace_blanks = params.pop('replace_blanks', False)
         flip_answers = params.pop('flip_answers', False)
         use_extracted_world_entities = params.pop('use_extracted_world_entities', False)
+        extract_world_entities = params.pop('extract_world_entities', False)
         replace_world_entities = params.pop('replace_world_entities', False)
+        skip_world_alignment = params.pop('skip_world_alignment', False)
+        gold_worlds = params.pop('gold_worlds', False)
         entity_tag_mode = params.pop('entity_tag_mode', None)
         lf_syntax = params.pop('lf_syntax', None)
         tokenizer = Tokenizer.from_params(params.pop('tokenizer', {}))
@@ -354,7 +403,10 @@ class FrictionQDatasetReader(DatasetReader):
                                       replace_blanks=replace_blanks,
                                       flip_answers=flip_answers,
                                       use_extracted_world_entities=use_extracted_world_entities,
+                                      extract_world_entities=extract_world_entities,
                                       replace_world_entities=replace_world_entities,
+                                      skip_world_alignment=skip_world_alignment,
+                                      gold_worlds=gold_worlds,
                                       lf_syntax=lf_syntax,
                                       entity_tag_mode=entity_tag_mode,
                                       tokenizer=tokenizer,
