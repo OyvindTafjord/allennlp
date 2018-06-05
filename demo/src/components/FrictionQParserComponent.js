@@ -160,7 +160,7 @@ class FrictionQInput extends React.Component {
 
 class FrictionQOutput extends React.Component {
   render() {
-    const { answer, logicalForm, actions, question_tokens } = this.props;
+    const { answer, logicalForm, actions, question_tokens, worldExtractions } = this.props;
 
     return (
       <div className="model__content">
@@ -172,6 +172,12 @@ class FrictionQOutput extends React.Component {
         <div className="form__field">
           <label>Logical Form</label>
           <div className="model__content__summary">{ logicalForm }</div>
+        </div>
+
+        <div className="form__field">
+          <label>Extracted world entities</label>
+          <div className="model__content__summary">world1: { worldExtractions.world1 },
+          world2: { worldExtractions.world2 }</div>
         </div>
 
         <div className="form__field">
@@ -284,6 +290,7 @@ class _FrictionQParserComponent extends React.Component {
     const logicalForm = responseData && responseData.logical_form;
     const actions = responseData && responseData.predicted_actions;
     const question_tokens = responseData && responseData.question_tokens;
+    const worldExtractions = responseData && responseData.world_extractions;
 
     return (
       <div className="pane model">
@@ -297,6 +304,7 @@ class _FrictionQParserComponent extends React.Component {
                             logicalForm={logicalForm}
                             actions={actions}
                             question_tokens={question_tokens}
+                            worldExtractions={worldExtractions}
           />
         </PaneRight>
       </div>

@@ -23,13 +23,29 @@ class FrictionQParserPredictor(Predictor):
         """
         question_text = json_dict["question"]
 
+        reader = self._dataset_reader
+
         # pylint: disable=protected-access
-        fixed_question_text = self._dataset_reader._fix_question(question_text)
-        tokenized_question = self._dataset_reader._tokenizer.tokenize(fixed_question_text.lower())  # type: ignore
+        world_extractions = None
+        if reader._extract_world_entities and reader._replace_world_entities:
+            world_extractions = reader.get_world_extractions(json_dict)
+            if world_extractions is not None:
+                question_text = reader._replace_stemmed_entities(question_text,
+                                                                 world_extractions,
+                                                                 reader._stemmer)
+        fixed_question_text = reader._fix_question(question_text)
+        tokenized_question = reader._tokenizer.tokenize(fixed_question_text.lower())  # type: ignore
 
         instance = self._dataset_reader.text_to_instance(question_text,  # type: ignore
-                                                         tokenized_question=tokenized_question)
-        extra_info = {'question_tokens': tokenized_question}
+                                                         tokenized_question=tokenized_question,
+                                                         world_extractions=world_extractions)
+
+        world_extractions_out = {"world1": "N/A", "world2": "N/A"}
+        if world_extractions is not None:
+            world_extractiosn_out = world_extractions_out.update(world_extractions)
+
+        extra_info = {'question_tokens': tokenized_question,
+                      "world_extractions": world_extractions_out}
         return instance, extra_info
 
     @overrides

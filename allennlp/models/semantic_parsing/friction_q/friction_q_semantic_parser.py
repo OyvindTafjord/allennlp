@@ -448,6 +448,7 @@ class FrictionQSemanticParser(Model):
             outputs['parse_acc'] = []
             outputs['answer_index'] = []
             outputs['question_tokens'] = []
+            outputs['world_extractions'] = []
             for i in range(batch_size):
                 # Decoding may not have terminated with any completed logical forms, if `num_steps`
                 # isn't long enough (or if the model is not trained enough and gets into an
@@ -471,6 +472,8 @@ class FrictionQSemanticParser(Model):
                     predicted_answer_index = FrictionWorld.execute(logical_form)
                     if metadata is not None and 'question_tokens' in metadata[i]:
                         outputs['question_tokens'].append(metadata[i]['question_tokens'])
+                    if metadata is not None and 'world_extractions' in metadata[i]:
+                        outputs['world_extractions'].append(metadata[i]['world_extractions'])
                     if metadata is not None and 'answer_index' in metadata[i]:
                         answer_index = metadata[i]['answer_index']
                         denotation_accuracy = self._denotation_match(predicted_answer_index, answer_index)

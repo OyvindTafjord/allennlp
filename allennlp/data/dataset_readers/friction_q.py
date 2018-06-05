@@ -121,28 +121,12 @@ class FrictionQDatasetReader(DatasetReader):
                 if not line:
                     continue
                 question_datas = json.loads(line)
-                skip_alignment = self._skip_world_alignment
                 if self._gold_worlds:
                     question_datas['world_extractions'] = question_datas['world_literals']
                 if self._extract_world_entities:
-                    extracted = self._world_extractor.extract(question_datas['question'])
-                    extractions = {}
-                    if 'world_literals' in question_datas: # and not skip_alignment:
-                        literals = question_datas['world_literals']
-                        aligned = self._world_extractor.align(extracted, literals)
-                        # If we haven't aligned two different things (including None), give up
-                        if len(set(aligned)) < 2:
-                            continue
-                        aligned_dict = {key: value for key, value in zip(aligned, extracted)}
-                        for key in literals.keys():
-                            # if key is missing, then it must be assigned to None per above logic
-                            value = aligned_dict[key] if key in aligned_dict else aligned_dict[None]
-                            extractions[key] = value
-                    else:
-                        if len(extracted) < 2 or extracted[0] == extracted[1]:
-                            continue
-                        extractions = {"world1": extracted[0], "world2": extracted[1]}
-                        skip_alignment = True
+                    extractions = self.get_world_extractions(question_datas)
+                    if extractions is None:
+                        continue
                     question_datas['world_extractions'] = extractions
 
                 # Skip training instances without world entities if needing them
@@ -169,7 +153,8 @@ class FrictionQDatasetReader(DatasetReader):
                     question_id = question_data['id']
                     logical_forms = question_data['logical_forms']
                     if (self._first_lf_only or self._use_extracted_world_entities
-                            or self._replace_world_entities) and not skip_alignment and len(logical_forms) > 1:
+                            or self._replace_world_entities) and not self._skip_world_alignment \
+                            and len(logical_forms) > 1:
                         if self._random_lf_pick:
                             logical_forms = [random.choice(logical_forms)]
                         else:
@@ -201,6 +186,7 @@ class FrictionQDatasetReader(DatasetReader):
         """
         # pylint: disable=arguments-differ
         tokenized_question = tokenized_question or self._tokenizer.tokenize(question.lower())
+        additional_metadata = additional_metadata or dict()
         additional_metadata['question_tokens'] = [token.text for token in tokenized_question]
         question_field = TextField(tokenized_question, self._question_token_indexers)
         if self._use_extracted_world_entities:
@@ -273,6 +259,26 @@ class FrictionQDatasetReader(DatasetReader):
         res = re.sub(r" *_{3,} *", " blankblank ", res)
         return res
 
+
+    def get_world_extractions(self, question_data):
+        extracted = self._world_extractor.extract(question_data['question'])
+        extractions = {}
+        if 'world_literals' in question_data and not self._skip_world_alignment:
+            literals = question_data['world_literals']
+            aligned = self._world_extractor.align(extracted, literals)
+            # If we haven't aligned two different things (including None), give up
+            if len(set(aligned)) < 2:
+                return None
+            aligned_dict = {key: value for key, value in zip(aligned, extracted)}
+            for key in literals.keys():
+                # if key is missing, then it must be assigned to None per above logic
+                value = aligned_dict[key] if key in aligned_dict else aligned_dict[None]
+                extractions[key] = value
+        else:
+            if len(extracted) < 2 or extracted[0] == extracted[1]:
+                return None
+            extractions = {"world1": extracted[0], "world2": extracted[1]}
+        return extractions
 
     @staticmethod
     def _get_entity_tags(linking_features: List[List[List[float]]]) -> List[List[float]]:
