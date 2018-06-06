@@ -94,6 +94,8 @@ class FrictionQSemanticParser(Model):
                  num_entity_tags: int = 0,
                  entity_tag_output: bool = False,
                  use_entities: bool = False,
+                 entity_tagger: str = None,
+                 tagging_loss_coeff: float = 1.0,
                  rule_namespace: str = 'rule_labels',
                  tables_directory: str = '/wikitables/') -> None:
         super(FrictionQSemanticParser, self).__init__(vocab)
@@ -148,6 +150,12 @@ class FrictionQSemanticParser(Model):
             self._question_neighbor_params = None
 
         self._decoder_trainer = MaximumMarginalLikelihood()
+
+        self._entity_tagger = None
+        if entity_tagger:
+            self._entity_tagger = TimeDistributed(torch.nn.Linear(self._encoder.get_output_dim(),
+                                                                  num_entity_tags))
+        self._tagging_loss_coeff = tagging_loss_coeff
 
         self._encoder_output_dim = self._encoder.get_output_dim()
         if entity_tag_output:
@@ -338,6 +346,15 @@ class FrictionQSemanticParser(Model):
         # (batch_size, question_length, encoder_output_dim)
         encoder_outputs = self._dropout(self._encoder(encoder_input, question_mask))
 
+        tagging_loss = None
+        if self._entity_tagger is not None:
+            gold_entity_tag = entity_tag
+            entity_tag = self._entity_tagger(encoder_outputs)
+            if gold_entity_tag is not None:
+                tagging_loss = util.sequence_cross_entropy_with_logits(entity_tag,
+                                                                       gold_entity_tag,
+                                                                       question_mask)
+
         if self._entity_tag_output and entity_tag is not None:
             encoder_outputs = torch.cat([encoder_outputs, entity_tag], 2)
 
@@ -409,9 +426,14 @@ class FrictionQSemanticParser(Model):
                                                entity_types=entity_type_dict,
                                                debug_info=None)
         if self.training:
-            return self._decoder_trainer.decode(initial_state,
+            outputs = self._decoder_trainer.decode(initial_state,
                                                 self._decoder_step,
                                                 (target_action_sequences, target_mask))
+            if tagging_loss is not None:
+                outputs['loss'] += self._tagging_loss_coeff * tagging_loss
+            return outputs
+
+
         else:
             action_mapping = {}
             for batch_index, batch_actions in enumerate(actions):
@@ -422,6 +444,9 @@ class FrictionQSemanticParser(Model):
                 outputs['loss'] = self._decoder_trainer.decode(initial_state,
                                                                self._decoder_step,
                                                                (target_action_sequences, target_mask))['loss']
+                if tagging_loss is not None:
+                    outputs['loss'] += self._tagging_loss_coeff * tagging_loss
+
             num_steps = self._max_decoding_steps
             # This tells the state to start keeping track of debug info, which we'll pass along in
             # our output dictionary.
@@ -909,6 +934,8 @@ class FrictionQSemanticParser(Model):
             default_num_linking_features = 0
         num_linking_features = params.pop_int('num_linking_features', default_num_linking_features)
         num_entity_tags = params.pop_int('num_entity_tags', 0)
+        entity_tagger = params.pop('entity_tagger', None)
+        tagging_loss_coeff = params.pop_float('tagging_loss_coeff', 1.0)
         entity_tag_output = params.pop_bool('entity_tag_output', False)
         rule_namespace = params.pop('rule_namespace', 'rule_labels')
         tables_directory = params.pop('tables_directory', '/wikitables/')
@@ -926,6 +953,8 @@ class FrictionQSemanticParser(Model):
                    action_similarity_dim=action_similarity_dim,
                    dropout=dropout,
                    use_entities=use_entities,
+                   entity_tagger=entity_tagger,
+                   tagging_loss_coeff=tagging_loss_coeff,
                    num_linking_features=num_linking_features,
                    num_entity_tags=num_entity_tags,
                    entity_tag_output=entity_tag_output,

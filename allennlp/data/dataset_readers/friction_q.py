@@ -69,6 +69,7 @@ class FrictionQDatasetReader(DatasetReader):
                  lazy: bool = False,
                  filter_type2: bool = False,
                  first_lf_only: bool = False,
+                 sample: int = -1,
                  split_question: bool = False,
                  replace_blanks: bool = False,
                  flip_answers: bool = False,
@@ -91,6 +92,7 @@ class FrictionQDatasetReader(DatasetReader):
         self._table_token_indexers = self._question_token_indexers
         self._filter_type2 = filter_type2
         self._first_lf_only = first_lf_only
+        self._sample = sample
         self._split_question = split_question
         self._replace_blanks = replace_blanks
         self._flip_answers = flip_answers
@@ -114,14 +116,18 @@ class FrictionQDatasetReader(DatasetReader):
     @overrides
     def _read(self, file_path):
         debug = 5
+        counter = self._sample
         with open(file_path, "r") as data_file:
             logger.info("Reading instances from lines in file: %s", file_path)
             for line in tqdm.tqdm(data_file):
+                counter -= 1
+                if counter == 0:
+                    break
                 line = line.strip("\n")
                 if not line:
                     continue
                 question_datas = json.loads(line)
-                if self._gold_worlds:
+                if self._gold_worlds and 'world_literals' in question_datas:
                     question_datas['world_extractions'] = question_datas['world_literals']
                 if self._extract_world_entities:
                     extractions = self.get_world_extractions(question_datas)
@@ -189,7 +195,7 @@ class FrictionQDatasetReader(DatasetReader):
         additional_metadata = additional_metadata or dict()
         additional_metadata['question_tokens'] = [token.text for token in tokenized_question]
         question_field = TextField(tokenized_question, self._question_token_indexers)
-        if self._use_extracted_world_entities:
+        if self._use_extracted_world_entities and world_extractions is not None:
             neighbors = {key: [] for key in world_extractions.keys()}
             knowledge_graph = KnowledgeGraph(entities=set(world_extractions.keys()),
                                              neighbors=neighbors,
@@ -221,12 +227,19 @@ class FrictionQDatasetReader(DatasetReader):
                   'world': world_field,
                   'actions': action_field}
 
-        if self._entity_tag_mode is not None:
+        if self._entity_tag_mode is not None and world_extractions is not None:
             linking_features = table_field.linking_features
             entity_tags = self._get_entity_tags(linking_features)
-            if self._entity_tag_mode == "simple_collapsed":
-                entity_tags = [[max(tags)] for tags in entity_tags]
-            entity_tag_field = ArrayField(np.array(entity_tags))
+            if self._entity_tag_mode == "simple":
+                entity_tags = [[[0,0], [1,0], [0,1]][tag] for tag in entity_tags]
+            elif self._entity_tag_mode == "simple_collapsed":
+                entity_tags = [[[0], [1], [1]][tag] for tag in entity_tags]
+            elif self._entity_tag_mode == "simple3":
+                entity_tags = [[[1,0,0], [0,1,0], [0,0,1]][tag] for tag in entity_tags]
+            if self._entity_tag_mode == "labels":
+                entity_tag_field = LabelField(np.array(entity_tags))
+            else:
+                entity_tag_field = ArrayField(np.array(entity_tags))
             fields['entity_tag'] = entity_tag_field
 
         if logical_forms:
@@ -281,23 +294,21 @@ class FrictionQDatasetReader(DatasetReader):
         return extractions
 
     @staticmethod
-    def _get_entity_tags(linking_features: List[List[List[float]]]) -> List[List[float]]:
+    def _get_entity_tags(linking_features: List[List[List[float]]]) -> List[int]:
         """
-        Simple heuristic on linking features to get entity tag. Code could be simpler using
-        proper arrays here.
+        Simple heuristic on linking features to get entity tag (0=no world, 1=world1, 2=world2)
         """
-        res = [[0.0 for x in entity_token] for entity_token in zip(*linking_features)]
+        res = []
         for token_index, entity_features in enumerate(zip(*linking_features)):
             score_max = 0
-            pos = None
+            world = 0
             for index, features in enumerate(entity_features):
                 # Use the two span features with cutoff of 0.5
                 score = max(features[8:])
                 if score > score_max and score >= 0.5:
-                    pos = index
+                    world = index + 1
                     score_max = score
-            if pos is not None:
-                res[token_index][pos] = 1.0
+            res.append(world)
         return res
 
     @staticmethod
@@ -389,6 +400,7 @@ class FrictionQDatasetReader(DatasetReader):
         lazy = params.pop('lazy', False)
         filter_type2 = params.pop('filter_type2', False)
         first_lf_only = params.pop('first_lf_only', False)
+        sample = params.pop('sample', -1)
         split_question = params.pop('split_question', False)
         replace_blanks = params.pop('replace_blanks', False)
         flip_answers = params.pop('flip_answers', False)
@@ -405,6 +417,7 @@ class FrictionQDatasetReader(DatasetReader):
         return FrictionQDatasetReader(lazy=lazy,
                                       filter_type2=filter_type2,
                                       first_lf_only=first_lf_only,
+                                      sample=sample,
                                       split_question=split_question,
                                       replace_blanks=replace_blanks,
                                       flip_answers=flip_answers,
