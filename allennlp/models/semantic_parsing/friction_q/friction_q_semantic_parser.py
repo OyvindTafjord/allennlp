@@ -96,6 +96,7 @@ class FrictionQSemanticParser(Model):
                  use_entities: bool = False,
                  entity_tagger: str = None,
                  tagging_loss_coeff: float = 1.0,
+                 entity_tag_normalizer: str = "softmax",
                  rule_namespace: str = 'rule_labels',
                  tables_directory: str = '/wikitables/') -> None:
         super(FrictionQSemanticParser, self).__init__(vocab)
@@ -162,6 +163,11 @@ class FrictionQSemanticParser(Model):
             self._encoder_output_dim += num_entity_tags
 
         self._entity_tag_output = entity_tag_output
+        self._entity_tag_normalizer = entity_tag_normalizer
+
+        self._debug_count = 10
+
+        self._entity_tagger_epochs = -1
 
         # This is what we pass as input in the first step of decoding, when we don't have a
         # previous action, or a previous question attention.
@@ -189,6 +195,8 @@ class FrictionQSemanticParser(Model):
                 entity_tag: List[torch.Tensor] = None,
                 example_lisp_string: List[str] = None,
                 target_action_sequences: torch.LongTensor = None,
+                target_entity_tag: torch.LongTensor = None,
+                epoch_number = None,
                 metadata: List[Dict[str, Any]] = None) -> Dict[str, torch.Tensor]:
         # pylint: disable=arguments-differ
         # pylint: disable=unused-argument
@@ -227,6 +235,8 @@ class FrictionQSemanticParser(Model):
         """
 
         table_text = table['text']
+
+        self._debug_count -= 1
 
         # (batch_size, question_length, embedding_dim)
         embedded_question = self._question_embedder(question)
@@ -348,12 +358,37 @@ class FrictionQSemanticParser(Model):
 
         tagging_loss = None
         if self._entity_tagger is not None:
-            gold_entity_tag = entity_tag
-            entity_tag = self._entity_tagger(encoder_outputs)
-            if gold_entity_tag is not None:
-                tagging_loss = util.sequence_cross_entropy_with_logits(entity_tag,
-                                                                       gold_entity_tag,
+            entity_tag_logits = self._entity_tagger(encoder_outputs)
+            if target_entity_tag is not None:
+                tagging_loss = util.sequence_cross_entropy_with_logits(entity_tag_logits,
+                                                                       target_entity_tag,
                                                                        question_mask)
+                if epoch_number is not None and epoch_number < self._entity_tagger_epochs:
+                    return {"loss": self._tagging_loss_coeff * tagging_loss}
+
+            if self._entity_tag_normalizer == "softmax":
+                # Normalize with softmax
+                logits = entity_tag_logits
+                logits_flat = logits.view(-1, logits.size(-1))
+                probs_flat = torch.nn.functional.softmax(logits_flat, dim=-1)
+                probs = probs_flat.view_as(logits)
+                entity_tag = probs
+            elif self._entity_tag_normalizer == "one_hot":
+                # Replace max values with 1, rest with 0
+                logits = entity_tag_logits
+                logits_flat = logits.view(-1, logits.size(-1))
+                max = logits_flat.max(dim=1)
+                one_hot_flat = Variable(torch.zeros(logits_flat.size()))
+                one_hot_flat.scatter_(1, max[1].unsqueeze(1), 1)
+                entity_tag = one_hot_flat.view_as(logits)
+            else:
+                # Use unnormalized logits
+                entity_tag = entity_tag_logits
+
+            if self._debug_count > 1000:
+                print("TAGGING_LOSS = {}".format(tagging_loss))
+                print("target_entity_tag = {}".format(target_entity_tag))
+                print("entity_tag = {}".format(entity_tag))
 
         if self._entity_tag_output and entity_tag is not None:
             encoder_outputs = torch.cat([encoder_outputs, entity_tag], 2)
@@ -466,6 +501,10 @@ class FrictionQSemanticParser(Model):
                 outputs['feature_scores'] = feature_scores
             if self._use_entities:
                 outputs['linking_probabilities'] = linking_probabilities
+            if entity_tag is not None:
+                outputs['entity_tag'] = entity_tag
+            if target_entity_tag is not None:
+                outputs['target_entity_tag'] = target_entity_tag
             # outputs['similarity_scores'] = question_entity_similarity_max_score
             outputs['logical_form'] = []
             outputs['denotation_acc'] = []
@@ -936,6 +975,7 @@ class FrictionQSemanticParser(Model):
         num_entity_tags = params.pop_int('num_entity_tags', 0)
         entity_tagger = params.pop('entity_tagger', None)
         tagging_loss_coeff = params.pop_float('tagging_loss_coeff', 1.0)
+        entity_tag_normalizer = params.pop('entity_tag_normalizer', "softmax")
         entity_tag_output = params.pop_bool('entity_tag_output', False)
         rule_namespace = params.pop('rule_namespace', 'rule_labels')
         tables_directory = params.pop('tables_directory', '/wikitables/')
@@ -955,6 +995,7 @@ class FrictionQSemanticParser(Model):
                    use_entities=use_entities,
                    entity_tagger=entity_tagger,
                    tagging_loss_coeff=tagging_loss_coeff,
+                   entity_tag_normalizer=entity_tag_normalizer,
                    num_linking_features=num_linking_features,
                    num_entity_tags=num_entity_tags,
                    entity_tag_output=entity_tag_output,

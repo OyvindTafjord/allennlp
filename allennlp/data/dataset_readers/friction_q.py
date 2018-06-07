@@ -20,6 +20,7 @@ from allennlp.data.tokenizers.word_stemmer import PorterStemmer
 from allennlp.data.token_indexers import TokenIndexer, SingleIdTokenIndexer
 from allennlp.data.fields import ArrayField, Field, TextField, KnowledgeGraphField, LabelField
 from allennlp.data.fields import IndexField, ListField, MetadataField, ProductionRuleField
+from allennlp.data.fields import SequenceLabelField
 from allennlp.data.dataset_readers.dataset_reader import DatasetReader
 from allennlp.data.dataset_readers.seq2seq import START_SYMBOL, END_SYMBOL
 from allennlp.semparse.contexts import TableQuestionKnowledgeGraph
@@ -137,7 +138,8 @@ class FrictionQDatasetReader(DatasetReader):
 
                 # Skip training instances without world entities if needing them
                 if (self._use_extracted_world_entities or self._replace_world_entities) \
-                        and "world_extractions" not in question_datas:
+                        and "world_extractions" not in question_datas \
+                        and "label" not in self._entity_tag_mode:
                     continue
                 if self._replace_world_entities:
                     new_q = self._replace_stemmed_entities(question_datas['question'],
@@ -194,6 +196,8 @@ class FrictionQDatasetReader(DatasetReader):
         tokenized_question = tokenized_question or self._tokenizer.tokenize(question.lower())
         additional_metadata = additional_metadata or dict()
         additional_metadata['question_tokens'] = [token.text for token in tokenized_question]
+        if world_extractions is not None:
+            additional_metadata['world_extractions'] = world_extractions
         question_field = TextField(tokenized_question, self._question_token_indexers)
         if self._use_extracted_world_entities and world_extractions is not None:
             neighbors = {key: [] for key in world_extractions.keys()}
@@ -201,7 +205,6 @@ class FrictionQDatasetReader(DatasetReader):
                                              neighbors=neighbors,
                                              entity_text=world_extractions)
             world = FrictionWorld(knowledge_graph, self._lf_syntax)
-            additional_metadata['world_extractions'] = world_extractions
         else:
             knowledge_graph = self._table_knowledge_graph
             world = self._world
@@ -236,11 +239,12 @@ class FrictionQDatasetReader(DatasetReader):
                 entity_tags = [[[0], [1], [1]][tag] for tag in entity_tags]
             elif self._entity_tag_mode == "simple3":
                 entity_tags = [[[1,0,0], [0,1,0], [0,0,1]][tag] for tag in entity_tags]
-            if self._entity_tag_mode == "labels":
-                entity_tag_field = LabelField(np.array(entity_tags))
+
+            if self._entity_tag_mode == "label":
+                fields['target_entity_tag'] = SequenceLabelField(entity_tags, question_field)
             else:
                 entity_tag_field = ArrayField(np.array(entity_tags))
-            fields['entity_tag'] = entity_tag_field
+                fields['entity_tag'] = entity_tag_field
 
         if logical_forms:
             action_map = {action.rule: i for i, action in enumerate(action_field.field_list)}
