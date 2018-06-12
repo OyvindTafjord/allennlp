@@ -26,6 +26,16 @@ def is_subseq(sequence, subseq):
     return False
 
 
+def get_start_pos(string, search_string):
+    pos = string.find(search_string)
+    if pos < 0:
+        pos = [string.find(word) for word in get_words(search_string)]
+        pos = list(filter(lambda x: x >= 0, pos))
+        if len(pos) == 0: return -1
+        pos = min(pos)
+    return pos
+
+
 def get_words_postag(tokens, postag):
     return [token.text.lower() for token in tokens if token.tag_ == postag]
 
@@ -109,12 +119,16 @@ class WorldExtractor():
                 # ELSE gather just the adjective(s) in optionA. IF the adjective(s) is also in setup, then the adjective(s) is the A-WORLD
                 else:
                     adjectives = get_words_postag(answers_tokens[answer_index], "JJ")
-                    if adjectives:
+                    if any(adjective in setup for adjective in adjectives):
                         world = " ".join(adjectives)
                 worlds.append(world)
 
             # IF found an A-WORLD AND found a B-WORLD AND A-WORLD /= B-WORLD THEN you're done!
             if not "" in worlds and worlds[0] != worlds[1]:
+                # Reorder so first world appears first in setup
+                setup_pos = [get_start_pos(setup, world) for world in worlds]
+                if min(setup_pos) >= 0 and setup_pos[1] < setup_pos[0]:
+                    worlds.reverse()
                 return worlds
         worlds = []
         tokens = self._spacy_model(question)
