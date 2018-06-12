@@ -56,7 +56,7 @@ DEFAULT_MODELS = {
 }
 DEFAULT_MODELS = {
         'friction-q-parsing': DemoModel(
-                'https://s3-us-west-2.amazonaws.com/ai2-oyvindt/models/friction_sp-try35y/model.tar.gz',  # pylint: disable=line-too-long
+                'https://s3-us-west-2.amazonaws.com/ai2-oyvindt/models/friction_sp-try60x/model.tar.gz',  # pylint: disable=line-too-long
                 'friction-q-parser'
         )
 }
