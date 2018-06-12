@@ -28,11 +28,11 @@ class FrictionQParserPredictor(Predictor):
         # pylint: disable=protected-access
         world_extractions = None
         if reader._extract_world_entities and reader._replace_world_entities:
-            world_extractions = reader.get_world_extractions(json_dict)
+            world_extractions, _ = reader.get_world_extractions(json_dict)
+            json_dict['world_extractions'] = world_extractions
             if world_extractions is not None:
-                question_text = reader._replace_stemmed_entities(question_text,
-                                                                 world_extractions,
-                                                                 reader._stemmer)
+                json_dict = reader._replace_stemmed_entities(json_dict, reader._stemmer)
+                question_text = json_dict['question']
         fixed_question_text = reader._fix_question(question_text)
         tokenized_question = reader._tokenizer.tokenize(fixed_question_text.lower())  # type: ignore
 
@@ -42,7 +42,7 @@ class FrictionQParserPredictor(Predictor):
 
         world_extractions_out = {"world1": "N/A", "world2": "N/A"}
         if world_extractions is not None:
-            world_extractiosn_out = world_extractions_out.update(world_extractions)
+            world_extractions_out.update(world_extractions)
 
         extra_info = {'question_tokens': tokenized_question,
                       "world_extractions": world_extractions_out}
