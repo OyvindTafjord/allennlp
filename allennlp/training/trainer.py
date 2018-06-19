@@ -447,6 +447,8 @@ class Trainer:
 
             self._optimizer.zero_grad()
 
+            batch['epoch_number'] = epoch
+
             loss = self._batch_loss(batch, for_training=True)
             loss.backward()
 
@@ -609,7 +611,7 @@ class Trainer:
             elif train_metric is not None:
                 logger.info(message_template, "Training", name, train_metric)
 
-    def _validation_loss(self) -> Tuple[float, int]:
+    def _validation_loss(self, epoch) -> Tuple[float, int]:
         """
         Computes the validation loss. Returns it and the number of batches.
         """
@@ -627,7 +629,7 @@ class Trainer:
         batches_this_epoch = 0
         val_loss = 0
         for batch in val_generator_tqdm:
-
+            batch['epoch_number'] = epoch
             loss = self._batch_loss(batch, for_training=False)
             if loss is not None:
                 # You shouldn't necessarily have to compute a loss for validation, so we allow for
@@ -672,7 +674,7 @@ class Trainer:
 
             if self._validation_data is not None:
                 # We have a validation set, so compute all the metrics on it.
-                val_loss, num_batches = self._validation_loss()
+                val_loss, num_batches = self._validation_loss(epoch)
                 val_metrics = self._get_metrics(val_loss, num_batches, reset=True)
 
                 # Check validation metric for early stopping
