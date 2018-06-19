@@ -25,7 +25,7 @@ from allennlp.semparse.type_declarations import type_declaration
 from allennlp.semparse.type_declarations.type_declaration import START_SYMBOL
 from allennlp.semparse.worlds import FrictionWorld
 from allennlp.semparse import ParsingError
-from allennlp.training.metrics import Average, WikiTablesAccuracy
+from allennlp.training.metrics import Average, CategoricalAccuracy
 
 
 @Model.register("friction_q_parser")
@@ -156,6 +156,7 @@ class FrictionQSemanticParser(Model):
         if entity_tagger:
             self._entity_tagger = TimeDistributed(torch.nn.Linear(self._encoder.get_output_dim(),
                                                                   num_entity_tags))
+            self._entity_tagger_accuracy = CategoricalAccuracy()
         self._tagging_loss_coeff = tagging_loss_coeff
 
         self._encoder_output_dim = self._encoder.get_output_dim()
@@ -363,6 +364,9 @@ class FrictionQSemanticParser(Model):
                 tagging_loss = util.sequence_cross_entropy_with_logits(entity_tag_logits,
                                                                        target_entity_tag,
                                                                        question_mask)
+                self._entity_tagger_accuracy(entity_tag_logits,
+                                              target_entity_tag,
+                                              question_mask.float())
                 if epoch_number is not None and epoch_number < self._entity_tagger_epochs:
                     return {"loss": self._tagging_loss_coeff * tagging_loss}
 
@@ -378,7 +382,11 @@ class FrictionQSemanticParser(Model):
                 logits = entity_tag_logits
                 logits_flat = logits.view(-1, logits.size(-1))
                 max = logits_flat.max(dim=1)
+                # This should be done differently...
                 one_hot_flat = Variable(torch.zeros(logits_flat.size()))
+                cuda_device = self._get_prediction_device()
+                if cuda_device > -1:
+                    one_hot_flat = one_hot_flat.cuda(cuda_device)
                 one_hot_flat.scatter_(1, max[1].unsqueeze(1), 1)
                 entity_tag = one_hot_flat.view_as(logits)
             else:
@@ -775,11 +783,15 @@ class FrictionQSemanticParser(Model):
             into a repetitive loop, or we're trying to produce a super long logical form and run
             out of time steps, or something.
         """
-        return {
+        metrics = {
                 'parse_acc': self._action_sequence_accuracy.get_metric(reset),
                 'denotation_acc': self._denotation_accuracy.get_metric(reset),
                 'lf_percent': self._has_logical_form.get_metric(reset),
                 }
+        if self._entity_tagger:
+            metrics['entity_tag_acc'] = self._entity_tagger_accuracy.get_metric(reset)
+    
+        return metrics
 
     @staticmethod
     def _create_grammar_state(world: FrictionWorld,
