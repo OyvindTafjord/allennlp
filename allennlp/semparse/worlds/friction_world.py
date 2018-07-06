@@ -87,14 +87,19 @@ class FrictionWorld(World):
         """
         return False
 
-    # Simple table for how attributes relates qualitatively to friction
-    qr_coeff = {
-        "friction": 1,
-        "smoothness": -1,
-        "speed": -1,
-        "distance": -1,
-        "heat": 1
-    }
+    # Simple table for how attributes relates to each other
+
+    qr_coeff_sets = [{"friction": 1, "speed": -1, "smoothness": -1, "distance": -1, "heat": 1},
+                     {"speed": 1, "time": -1},
+                     {"speed": 1, "distance": 1},
+                     {"time": 1, "distance": 1},
+                     {"weight": 1, "acceleration": -1},
+                     {"strength": 1, "distance": 1},
+                     {"strength": 1, "thickness": 1},
+                     {"mass": 1, "gravity": 1},
+                     {"flexibility": 1, "breakability": -1},
+                     {"distance": 1, "loudness": -1, "brightness": -1, "apparentSize": -1},
+                     {"exerciseIntensity": 1, "amountSweat": 1}]
 
     # Size translation for absolute and relative values
     qr_size = {
@@ -106,7 +111,15 @@ class FrictionWorld(World):
 
     @staticmethod
     def check_compatible(setup: List, answer: List) -> bool:
-        attribute_dir = FrictionWorld.qr_coeff[setup[0]] * FrictionWorld.qr_coeff[answer[0]]
+        attributes = {setup[0], answer[0]}
+        qr_coeff = None
+        for qr_coeff_set in FrictionWorld.qr_coeff_sets:
+            if len(attributes - qr_coeff_set.keys()) == 0:
+                qr_coeff = qr_coeff_set
+        if qr_coeff is None:
+            return -2  # No compatible attribute sets found
+
+        attribute_dir = qr_coeff[setup[0]] * qr_coeff[answer[0]]
         change_same = 1 if FrictionWorld.qr_size[setup[1]] == FrictionWorld.qr_size[answer[1]] else -1
         world_same = 1 if setup[2] == answer[2] else -1
         return attribute_dir * change_same * world_same == 1
