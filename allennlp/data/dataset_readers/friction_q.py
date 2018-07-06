@@ -2,7 +2,7 @@
 Reader for Friction questions
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 import json
 import logging
 import re
@@ -63,6 +63,12 @@ class FrictionQDatasetReader(DatasetReader):
         Don't attempt to align world entities to literals, thus use both LFs
     single_lf_extractor_aligned : ``bool`` (optional, default=False)
         Use the gold LF which is aligned to the world order given by extractor
+    gold_worlds : ``bool`` (optional, default=False)
+        Use gold worlds rather than extraction heuristics
+    tagger_only : ``bool`` (optional, default=False)
+        Only output tagging information, in format for CRF tagger
+    collapse_world_tags : ``bool`` (optional, default=False)
+        For tagging purposes, collapse world1 and world2 to single world tag (but separate BIO)
     entity_tag_mode : ``str`` (optional, default=None)
         If set, add a field for entity tags ("simple" = 1.0 value for world1 and world2,
         "simple_collapsed" = single 1.0 value for any world), tagging based on token matches
@@ -87,7 +93,10 @@ class FrictionQDatasetReader(DatasetReader):
                  skip_world_alignment: bool = False,
                  single_lf_extractor_aligned: bool = False,
                  gold_worlds: bool = False,
+                 tagger_only: bool = False,
+                 collapse_world_tags: bool = False,
                  entity_tag_mode: Optional[str] = None,
+                 entity_types: Optional[List[str]] = None,
                  tokenizer: Tokenizer = None,
                  question_token_indexers: Dict[str, TokenIndexer] = None) -> None:
         super().__init__(lazy=lazy)
@@ -113,6 +122,41 @@ class FrictionQDatasetReader(DatasetReader):
         self._extract_world_entities = extract_world_entities
         self._single_lf_extractor_aligned = single_lf_extractor_aligned
         self._gold_worlds = gold_worlds
+        self._entity_types = entity_types
+        self._tagger_only = tagger_only
+        self._collapse_world_tags = collapse_world_tags
+
+        all_entities = {}
+        all_entities["comparison"] = ["distance-higher", "distance-lower", "friction-higher",
+                            "friction-lower", "heat-higher", "heat-lower", "smoothness-higher",
+                            "smoothness-lower", "speed-higher", "speed-lower"]
+        all_entities["value"] = ["distance-high", "distance-low", "friction-high", "friction-low",
+                                  "heat-high", "heat-low", "smoothness-high", "smoothness-low",
+                                  "speed-high", "speed-low"]
+        all_entities["world"] = ["world1", "world2"]
+        all_entities["vehicle"] = ["vehicle"]
+
+        self._all_entities = None
+        # entity_tag_mode:
+        #  collapsed = collapse worlds
+        #  collapsed2 = collapse all
+        #  collapsed3 = collapse all but worlds
+        if entity_types is not None:
+            if "collapsed2" in self._entity_tag_mode:
+                self._all_entities = entity_types
+            elif "collapsed3" in self._entity_tag_mode:
+                self._all_entities = entity_types
+                if "world" in entity_types:
+                    self._all_entities.remove("world")
+                    self._all_entities += all_entities['world']
+            else:
+                self._all_entities = [e for t in entity_types for e in all_entities[t]]
+                if "collapsed" in self._entity_tag_mode and 'world1' in self._all_entities:
+                    self._all_entities.remove('world1')
+                    self._all_entities.remove('world2')
+                    self._all_entities.append('world')
+        logger.info("ALL ENTITIES = {}".format(self._all_entities))
+
 
         self._random_lf_pick = False
 
@@ -145,11 +189,14 @@ class FrictionQDatasetReader(DatasetReader):
                     if extractions is None:
                         continue
                     question_data_in['world_extractions'] = extractions
+                if self._entity_types is not None:
+                    question_data_in['entity_literals'] = \
+                        self._get_entity_literals(question_data_in)
 
                 # Skip training instances without world entities if needing them
                 if (self._use_extracted_world_entities or self._replace_world_entities) \
                         and "world_extractions" not in question_data_in \
-                        and "label" not in self._entity_tag_mode:
+                        and (self._entity_tag_mode is None or "label" not in self._entity_tag_mode):
                     continue
                 if self._split_question:
                     question_datas = self._split_instance(question_data_in, self._replace_blanks)
@@ -183,7 +230,7 @@ class FrictionQDatasetReader(DatasetReader):
                     if one_lf_only and len(logical_forms) > 1:
                         if self._random_lf_pick:
                             logical_forms = [random.choice(logical_forms)]
-                        if world_flip_lf:
+                        elif world_flip_lf:
                             logical_forms = [logical_forms[1]]
                         else:
                             logical_forms = [logical_forms[0]]
@@ -194,13 +241,18 @@ class FrictionQDatasetReader(DatasetReader):
                         continue
                     answer_index = question_data['answer_index']
                     world_extractions = question_data.get('world_extractions')
+                    entity_literals = question_data.get('entity_literals')
+                    if entity_literals is not None and world_extractions is not None:
+                        # This will catch flipped worlds if need be
+                        entity_literals.update(world_extractions)
                     additional_metadata = {'id': question_id,
                                            'question': question,
                                            'answer_index': answer_index,
                                            'logical_forms': logical_forms}
-                    yield self.text_to_instance(question, logical_forms,
-                                                additional_metadata, world_extractions)
 
+                    yield self.text_to_instance(question, logical_forms,
+                                                    additional_metadata, world_extractions,
+                                                    entity_literals, debug=debug)
 
     @overrides
     def text_to_instance(self,  # type: ignore
@@ -208,7 +260,8 @@ class FrictionQDatasetReader(DatasetReader):
                          logical_forms: List[str] = None,
                          additional_metadata: Dict[str, Any] = None,
                          world_extractions: Dict[str, str] = None,
-                         tokenized_question: List[Token] = None) -> Instance:
+                         entity_literals: Dict[str, Union[str, List[str]]] = None,
+                         tokenized_question: List[Token] = None, debug=None) -> Instance:
         """
 
         """
@@ -250,7 +303,29 @@ class FrictionQDatasetReader(DatasetReader):
                   'world': world_field,
                   'actions': action_field}
 
-        if self._entity_tag_mode is not None and world_extractions is not None:
+        if self._entity_types is not None and entity_literals is not None:
+            entity_tags = self._get_entity_tags_full(table_field, entity_literals, tokenized_question)
+            if debug > 0:
+                logger.info(entity_literals)
+                logger.info(self._all_entities)
+                logger.info(entity_tags)
+            if self._tagger_only:
+                entity_tags = self._convert_tags_bio(entity_tags)
+                fields = {'tokens': question_field}
+                fields['tags'] = SequenceLabelField(entity_tags, question_field)
+                additional_metadata['tags_gold'] = entity_tags
+                fields['metadata'] = MetadataField(additional_metadata)
+                return Instance(fields)
+
+            elif self._entity_tag_mode == "label":
+                fields['target_entity_tag'] = SequenceLabelField(entity_tags, question_field)
+            else:
+                # Convert to one-hot
+                additional_metadata['entity_tags'] = entity_tags
+                entity_tags = np.eye(len(self._all_entities)+1)[entity_tags]
+                fields['entity_tag'] = ArrayField(entity_tags)
+
+        elif self._entity_tag_mode is not None and world_extractions is not None:
             linking_features = table_field.linking_features
             entity_tags = self._get_entity_tags(linking_features)
             if self._entity_tag_mode == "simple":
@@ -285,6 +360,30 @@ class FrictionQDatasetReader(DatasetReader):
             fields['target_action_sequences'] = ListField(action_sequence_fields)
         fields['metadata'] = MetadataField(additional_metadata or {})
         return Instance(fields)
+
+    def _convert_tags_bio(self, tags):
+        res = []
+        last_tag = 0
+        prefix_i = "I-"
+        prefix_b = "B-"
+        all_tags = self._all_entities
+        if self._collapse_world_tags:
+            all_tags = ['world' if 'world' in x else x for x in all_tags]
+        if self._entity_tag_mode == "label":
+            prefix_i = ""
+            prefix_b = ""
+        for tag in tags:
+            if tag == 0:
+                bio_tag = "O"
+            elif tag == last_tag:
+                bio_tag = prefix_i + all_tags[tag-1]
+            else:
+                bio_tag = prefix_b + all_tags[tag-1]
+            last_tag = tag
+            res.append(bio_tag)
+        return res
+
+
 
     @staticmethod
     def _fix_question(question: str) -> str:
@@ -322,6 +421,50 @@ class FrictionQDatasetReader(DatasetReader):
             extractions = {"world1": extracted[0], "world2": extracted[1]}
             # extractions = {"world1": extracted[1], "world2": extracted[0]}
         return extractions, flip
+
+    def _get_entity_tags_full(self, table_field, entity_literals, tokenized_question):
+        res = []
+        features = table_field._feature_extractors[8:]
+        for i, token in enumerate(tokenized_question):
+            tag_best = 0
+            score_max = 0
+            for tag_index, tag in enumerate(self._all_entities):
+                literals = entity_literals.get(tag, [])
+                if not isinstance(literals, list):
+                    literals = [literals]
+                for literal in literals:
+                    tag_tokens = self._tokenizer.tokenize(literal.lower())
+                    scores = [fe(tag, tag_tokens, token, i, tokenized_question) for fe in features]
+                    # Small tie breaker in favor of longer sequences
+                    score = max(scores) + len(tag_tokens)/100
+                    if score > score_max and score >= 0.5:
+                        tag_best = tag_index + 1
+                        score_max = score
+            res.append(tag_best)
+        return res
+
+    def _get_entity_literals(self, question_data):
+        res = {}
+        make_list = lambda x: x if isinstance(x, list) else [x]
+        for key, value in question_data.items():
+            if '_literals' in key and key.replace('_literals', '') in self._entity_types:
+                if "collapsed2" in self._entity_tag_mode \
+                        or ("collapsed3" in self._entity_tag_mode and 'world' not in key):
+                    tag = key.replace('_literals', '')
+                    values = []
+                    for v in value.values():
+                        values += make_list(v)
+                    res[tag] = values
+                else:
+                    res.update(value)
+        if "collapsed" in self._entity_tag_mode and "collapsed3" not in self._entity_tag_mode and "world1" in res:
+            worlds = []
+            for world in ['world1', 'world2']:
+                if world in res:
+                    worlds = worlds + make_list(res[world])
+                    del res[world]
+            res['world'] = worlds
+        return res
 
     @staticmethod
     def _get_entity_tags(linking_features: List[List[List[float]]]) -> List[int]:
@@ -415,10 +558,16 @@ class FrictionQDatasetReader(DatasetReader):
     def _replace_stemmed_entities(question_data, stemmer):
         question = question_data['question']
         entities = question_data['world_extractions']
-        max_words = max([len(re.findall(r"\w+", string)) for string in entities.values()])
+        entity_pairs = []
+        for key, value in entities.items():
+            if not isinstance(value, list):
+                entity_pairs.append((key, value))
+            else:
+                [entity_pairs.append((key,v)) for v in value]
+        max_words = max([len(re.findall(r"\w+", string)) for _, string in entity_pairs])
         word_pos = [[match.start(0), match.end(0)] for match in re.finditer(r'\w+', question)]
         entities_stemmed = {FrictionQDatasetReader._stem_phrase(value, stemmer):
-                            FrictionQDatasetReader.entity_name_map.get(key, key) for key, value in entities.items()}
+                            FrictionQDatasetReader.entity_name_map.get(key, key) for key, value in entity_pairs}
 
         def substitute(str):
             replacement = entities_stemmed.get(FrictionQDatasetReader._stem_phrase(str, stemmer))
@@ -433,7 +582,7 @@ class FrictionQDatasetReader(DatasetReader):
                     replacements[re.escape(sub)] = new_sub
 
         if len(replacements) == 0:
-            return question
+            return question_data
 
         pattern = "|".join(sorted(replacements.keys(), key=lambda x: -len(x)))
         regex = re.compile("\\b("+pattern+")\\b")
@@ -457,7 +606,10 @@ class FrictionQDatasetReader(DatasetReader):
         skip_world_alignment = params.pop('skip_world_alignment', False)
         single_lf_extractor_aligned = params.pop('single_lf_extractor_aligned', False)
         gold_worlds = params.pop('gold_worlds', False)
+        tagger_only = params.pop('tagger_only', False)
         entity_tag_mode = params.pop('entity_tag_mode', None)
+        entity_types = params.pop('entity_types', None)
+        collapse_world_tags = params.pop('collapse_world_tags', False)
         lf_syntax = params.pop('lf_syntax', None)
         tokenizer = Tokenizer.from_params(params.pop('tokenizer', {}))
         question_token_indexers = TokenIndexer.dict_from_params(params.pop('question_token_indexers', {}))
@@ -476,7 +628,10 @@ class FrictionQDatasetReader(DatasetReader):
                                       skip_world_alignment=skip_world_alignment,
                                       single_lf_extractor_aligned=single_lf_extractor_aligned,
                                       gold_worlds=gold_worlds,
+                                      tagger_only=tagger_only,
                                       lf_syntax=lf_syntax,
                                       entity_tag_mode=entity_tag_mode,
+                                      collapse_world_tags=collapse_world_tags,
+                                      entity_types=entity_types,
                                       tokenizer=tokenizer,
                                       question_token_indexers=question_token_indexers)
