@@ -115,15 +115,20 @@ def _persist_data(file_handle, metadata, model_output, metadata_fields_list) -> 
             res = {}
             res["id"] = meta.get("id", "NA")
             res["question"] = meta.get("question", "NA")
+            for key, value in meta.items():
+                if key in metadata_fields_list:
+                    res[key] =sanitize(value)
             # res["slot_values_text_scrambled"] = meta.get("slot_values_text_scrambled", [])
             # We persist model output which matches batch_size in length and is not a Variable
             for key, value in model_output.items():
+                key_out = key
+                if key in res: key_out = key+"-model"
                 if key in metadata_fields_list:
                     if len(value) == batch_size:
                         val = value[index]
-                        res[key] = sanitize(val)
+                        res[key_out] = sanitize(val)
                     else:
-                        res[key] = sanitize(value)
+                        res[key_out] = sanitize(value)
                         res["batch_index"] = index
             file_handle.write(json.dumps(res))
             file_handle.write("\n")
