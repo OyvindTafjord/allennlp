@@ -95,6 +95,7 @@ class FrictionQSemanticParser(Model):
                  entity_tag_output: bool = False,
                  use_entities: bool = False,
                  entity_tagger: str = None,
+                 denotation_only: bool = False,
                  tagging_loss_coeff: float = 1.0,
                  entity_tag_normalizer: str = "softmax",
                  rule_namespace: str = 'rule_labels',
@@ -177,6 +178,13 @@ class FrictionQSemanticParser(Model):
         torch.nn.init.normal(self._first_action_embedding)
         torch.nn.init.normal(self._first_attended_question)
 
+        self._num_denotation_cats = 2  # Hardcoded for simplicity
+        self._denotation_only = denotation_only
+        if self._denotation_only:
+            self._denotation_accuracy_cat = CategoricalAccuracy()
+            self._denotation_classifier = torch.nn.Linear(self._encoder_output_dim,
+                                                          self._num_denotation_cats)
+
         self._decoder_step = FrictionQDecoderStep(encoder_output_dim=self._encoder_output_dim,
                                                    action_embedding_dim=action_embedding_dim,
                                                    num_actions=num_actions,
@@ -195,6 +203,7 @@ class FrictionQSemanticParser(Model):
                 actions: List[List[ProductionRuleArray]],
                 entity_tag: List[torch.Tensor] = None,
                 example_lisp_string: List[str] = None,
+                denotation_target: List[torch.Tensor] = None,
                 target_action_sequences: torch.LongTensor = None,
                 target_entity_tag: torch.LongTensor = None,
                 epoch_number = None,
@@ -405,6 +414,12 @@ class FrictionQSemanticParser(Model):
         final_encoder_output = util.get_final_encoder_states(encoder_outputs,
                                                              question_mask,
                                                              self._encoder.is_bidirectional())
+        # We predict a categorical denotation directly
+        if self._denotation_only:
+            denotation_logits = self._denotation_classifier(final_encoder_output)
+            loss = torch.nn.functional.cross_entropy(denotation_logits, denotation_target.view(-1))
+            self._denotation_accuracy_cat(denotation_logits, denotation_target.squeeze(-1))
+            return {"loss": loss}
 
         memory_cell = Variable(encoder_outputs.data.new(batch_size, self._encoder_output_dim).fill_(0))
 
@@ -783,7 +798,12 @@ class FrictionQSemanticParser(Model):
             into a repetitive loop, or we're trying to produce a super long logical form and run
             out of time steps, or something.
         """
-        metrics = {
+        if self._denotation_only:
+            metrics = {
+                'denotation_acc': self._denotation_accuracy_cat.get_metric(reset)
+            }
+        else:
+            metrics = {
                 'parse_acc': self._action_sequence_accuracy.get_metric(reset),
                 'denotation_acc': self._denotation_accuracy.get_metric(reset),
                 'lf_percent': self._has_logical_form.get_metric(reset),
@@ -989,6 +1009,7 @@ class FrictionQSemanticParser(Model):
         tagging_loss_coeff = params.pop_float('tagging_loss_coeff', 1.0)
         entity_tag_normalizer = params.pop('entity_tag_normalizer', "softmax")
         entity_tag_output = params.pop_bool('entity_tag_output', False)
+        denotation_only = params.pop_bool('denotation_only', False)
         rule_namespace = params.pop('rule_namespace', 'rule_labels')
         tables_directory = params.pop('tables_directory', '/wikitables/')
         params.assert_empty(cls.__name__)
@@ -1011,5 +1032,6 @@ class FrictionQSemanticParser(Model):
                    num_linking_features=num_linking_features,
                    num_entity_tags=num_entity_tags,
                    entity_tag_output=entity_tag_output,
+                   denotation_only=denotation_only,
                    rule_namespace=rule_namespace,
                    tables_directory=tables_directory)

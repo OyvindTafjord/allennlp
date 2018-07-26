@@ -67,8 +67,9 @@ class FrictionQDatasetReader(DatasetReader):
         Use gold worlds rather than extraction heuristics
     tagger_only : ``bool`` (optional, default=False)
         Only output tagging information, in format for CRF tagger
-    collapse_world_tags : ``bool`` (optional, default=False)
-        For tagging purposes, collapse world1 and world2 to single world tag (but separate BIO)
+    collapse_tags : ``bool`` (optional, default=False)
+        For tagging purposes, collapse classes of tags (like 'world' or 'comparison') to single
+        tag (but separate BIO)
     entity_tag_mode : ``str`` (optional, default=None)
         If set, add a field for entity tags ("simple" = 1.0 value for world1 and world2,
         "simple_collapsed" = single 1.0 value for any world), tagging based on token matches
@@ -94,7 +95,9 @@ class FrictionQDatasetReader(DatasetReader):
                  single_lf_extractor_aligned: bool = False,
                  gold_worlds: bool = False,
                  tagger_only: bool = False,
-                 collapse_world_tags: bool = False,
+                 collapse_tags: Optional[List[str]] = None,
+                 denotation_only: bool = False,
+                 skip_attributes_regex: Optional[str] = None,
                  entity_tag_mode: Optional[str] = None,
                  entity_types: Optional[List[str]] = None,
                  tokenizer: Tokenizer = None,
@@ -124,7 +127,11 @@ class FrictionQDatasetReader(DatasetReader):
         self._gold_worlds = gold_worlds
         self._entity_types = entity_types
         self._tagger_only = tagger_only
-        self._collapse_world_tags = collapse_world_tags
+        self._collapse_tags = collapse_tags
+        self._denotation_only = denotation_only
+        self._skip_attributes_regex = None
+        if skip_attributes_regex is not None:
+            self._skip_attributes_regex = re.compile(skip_attributes_regex)
 
         all_entities = {}
         all_entities["comparison"] = ["distance-higher", "distance-lower", "friction-higher",
@@ -220,6 +227,9 @@ class FrictionQDatasetReader(DatasetReader):
                     question = self._fix_question(question)
                     question_id = question_data['id']
                     logical_forms = question_data['logical_forms']
+                    if (self._skip_attributes_regex is not None and
+                            self._skip_attributes_regex.search(logical_forms[0])):
+                        continue
                     one_lf_only = self._first_lf_only
                     if self._single_lf_extractor_aligned:
                         if "world_literals" in question_data_in:
@@ -303,6 +313,10 @@ class FrictionQDatasetReader(DatasetReader):
                   'world': world_field,
                   'actions': action_field}
 
+        if self._denotation_only:
+            denotation_field = LabelField(additional_metadata['answer_index'], skip_indexing=True)
+            fields['denotation_target'] = denotation_field
+
         if self._entity_types is not None and entity_literals is not None:
             entity_tags = self._get_entity_tags_full(table_field, entity_literals, tokenized_question)
             if debug > 0:
@@ -367,8 +381,13 @@ class FrictionQDatasetReader(DatasetReader):
         prefix_i = "I-"
         prefix_b = "B-"
         all_tags = self._all_entities
-        if self._collapse_world_tags:
-            all_tags = ['world' if 'world' in x else x for x in all_tags]
+        if self._collapse_tags is not None:
+            if 'world' in self._collapse_tags:
+                all_tags = ['world' if 'world' in x else x for x in all_tags]
+            if 'comparison' in self._collapse_tags:
+                all_tags = ['comparison' if '-higher' in x or '-lower' in x else x for x in all_tags]
+            if 'value' in self._collapse_tags:
+                all_tags = ['value' if '-high' in x or '-low' in x else x for x in all_tags]
         if self._entity_tag_mode == "label":
             prefix_i = ""
             prefix_b = ""
@@ -610,6 +629,11 @@ class FrictionQDatasetReader(DatasetReader):
         entity_tag_mode = params.pop('entity_tag_mode', None)
         entity_types = params.pop('entity_types', None)
         collapse_world_tags = params.pop('collapse_world_tags', False)
+        collapse_tags = params.pop('collapse_tags', None)
+        if collapse_world_tags:
+            collapse_tags = ['world']  # backwards compatibility
+        denotation_only = params.pop('denotation_only', False)
+        skip_attributes_regex = params.pop('skip_attributes_regex', None)
         lf_syntax = params.pop('lf_syntax', None)
         tokenizer = Tokenizer.from_params(params.pop('tokenizer', {}))
         question_token_indexers = TokenIndexer.dict_from_params(params.pop('question_token_indexers', {}))
@@ -631,7 +655,9 @@ class FrictionQDatasetReader(DatasetReader):
                                       tagger_only=tagger_only,
                                       lf_syntax=lf_syntax,
                                       entity_tag_mode=entity_tag_mode,
-                                      collapse_world_tags=collapse_world_tags,
+                                      collapse_tags=collapse_tags,
+                                      denotation_only=denotation_only,
+                                      skip_attributes_regex=skip_attributes_regex,
                                       entity_types=entity_types,
                                       tokenizer=tokenizer,
                                       question_token_indexers=question_token_indexers)
