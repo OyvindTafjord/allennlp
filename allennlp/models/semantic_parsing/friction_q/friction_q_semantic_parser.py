@@ -522,6 +522,7 @@ class FrictionQSemanticParser(Model):
             if self._linking_params is not None:
                 outputs['linking_scores'] = linking_scores
                 outputs['feature_scores'] = feature_scores
+                outputs['linking_features'] = linking_features
             if self._use_entities:
                 outputs['linking_probabilities'] = linking_probabilities
             if entity_tag is not None:

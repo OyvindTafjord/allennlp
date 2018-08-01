@@ -106,9 +106,9 @@ class FrictionQDatasetReader(DatasetReader):
         self._tokenizer = tokenizer or WordTokenizer()
         self._question_token_indexers = question_token_indexers or {"tokens": SingleIdTokenIndexer()}
         # Fake table so we can use WikiTable parser model
-        self._table_knowledge_graph = TableQuestionKnowledgeGraph.read_from_json(
+        self._knowledge_graph = TableQuestionKnowledgeGraph.read_from_json(
             {"columns":["foo"], "cells": [["foo"]], "question":[]})
-        self._world = FrictionWorld(self._table_knowledge_graph, lf_syntax)
+        self._world = FrictionWorld(self._knowledge_graph, lf_syntax)
         self._table_token_indexers = self._question_token_indexers
         self._filter_type2 = filter_type2
         self._first_lf_only = first_lf_only
@@ -164,6 +164,26 @@ class FrictionQDatasetReader(DatasetReader):
                     self._all_entities.append('world')
         logger.info("ALL ENTITIES = {}".format(self._all_entities))
 
+        self._dynamic_entities = dict()
+        self._use_attr_entities = False
+        if "_attr_entities" in lf_syntax:
+            self._use_attr_entities = True
+            qr_coeff_sets = self._world.qr_coeff_sets
+            if "_general" not in lf_syntax:
+                qr_coeff_sets = qr_coeff_sets[:1]
+            for s in qr_coeff_sets:
+                for k in s.keys():
+                    if (self._skip_attributes_regex is not None and
+                            self._skip_attributes_regex.search(k)):
+                        continue
+                    self._dynamic_entities["a:"+k] = k
+
+            neighbors = {key: [] for key in self._dynamic_entities.keys()}
+            self._knowledge_graph = KnowledgeGraph(entities=set(self._dynamic_entities.keys()),
+                                             neighbors=neighbors,
+                                             entity_text=self._dynamic_entities)
+            self._world = FrictionWorld(self._knowledge_graph, self._lf_syntax)
+
 
         self._random_lf_pick = False
 
@@ -178,6 +198,7 @@ class FrictionQDatasetReader(DatasetReader):
     def _read(self, file_path):
         debug = 5
         counter = self._sample
+        attr_regex = re.compile(r"""\((\w+) (high|low|higher|lower)""")
         with open(file_path, "r") as data_file:
             logger.info("Reading instances from lines in file: %s", file_path)
             for line in tqdm.tqdm(data_file):
@@ -190,6 +211,11 @@ class FrictionQDatasetReader(DatasetReader):
                 question_data_in = json.loads(line)
                 if self._gold_worlds and 'world_literals' in question_data_in:
                     question_data_in['world_extractions'] = question_data_in['world_literals']
+                if self._use_attr_entities:
+                    # Add "a:" prefix to attributes in LF
+                    lfs = question_data_in['logical_forms']
+                    lfs_new = [attr_regex.sub(r"(a:\1 \2", lf) for lf in lfs]
+                    question_data_in['logical_forms'] = lfs_new
                 world_flip_lf = False
                 if self._extract_world_entities:
                     extractions, world_flip_lf = self.get_world_extractions(question_data_in)
@@ -289,7 +315,7 @@ class FrictionQDatasetReader(DatasetReader):
                                              entity_text=world_extractions)
             world = FrictionWorld(knowledge_graph, self._lf_syntax)
         else:
-            knowledge_graph = self._table_knowledge_graph
+            knowledge_graph = self._knowledge_graph
             world = self._world
 
         table_field = KnowledgeGraphField(knowledge_graph,
@@ -367,9 +393,9 @@ class FrictionQDatasetReader(DatasetReader):
                         index_fields.append(IndexField(action_map[production_rule], action_field))
                     action_sequence_fields.append(ListField(index_fields))
                 except KeyError as error:
-                    logger.debug(f'Missing production rule: {error.args}, skipping logical form')
-                    logger.debug(f'Question was: {question}')
-                    logger.debug(f'Logical form was: {logical_form}')
+                    logger.info(f'Missing production rule: {error.args}, skipping logical form')
+                    logger.info(f'Question was: {question}')
+                    logger.info(f'Logical form was: {logical_form}')
                     continue
             fields['target_action_sequences'] = ListField(action_sequence_fields)
         fields['metadata'] = MetadataField(additional_metadata or {})

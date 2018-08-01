@@ -9,6 +9,7 @@ from typing import Any, List, Dict, Set, Callable, TypeVar, Union
 from nltk.sem.logic import Type
 from overrides import overrides
 import pyparsing
+import re
 
 from allennlp.semparse import util as semparse_util
 from allennlp.semparse.type_declarations.friction_type_declaration import FrictionTypeDeclaration
@@ -39,6 +40,9 @@ class FrictionWorld(World):
         # For every new Sempre column name seen, we update this counter to map it to a new NLTK name.
         self._column_counter = 0
 
+        self._attribute_counter = 0
+        self._attribute_index_map = dict()
+
         # This adds all of the cell and column names to our local name mapping, including null
         # cells and columns and a few simple numbers, so we can get them as valid actions in the
         # parser.  The null cell and column are used to check against empty sets, e.g., for
@@ -54,6 +58,13 @@ class FrictionWorld(World):
         """
         return entity_name in self._entity_set
 
+    def attribute_index(self, attribute: str) -> int:
+        if attribute not in self._attribute_index_map:
+            self._attribute_index_map[attribute] = self._attribute_counter
+            self._attribute_counter += 1
+        return self._attribute_index_map[attribute]
+
+
     @overrides
     def _map_name(self, name: str, keep_mapping: bool = False) -> str:
         translated_name = name
@@ -65,6 +76,13 @@ class FrictionWorld(World):
             translated_name = "W1"+name[-1]
             if "_world_entities" in self._syntax:
                 self._add_name_mapping(name, translated_name, self.types.WORLD_TYPE)
+            else:
+                # Hack to avoid world entities
+                self._add_name_mapping(name, translated_name, self.types.VAR_TYPE)
+        elif name.startswith("a:"):
+            translated_name = "A"+str(10+self.attribute_index(name))
+            if "_attr_entities" in self._syntax:
+                self._add_name_mapping(name, translated_name, self.types.ATTR_FUNCTION_TYPE)
             else:
                 # Hack to avoid world entities
                 self._add_name_mapping(name, translated_name, self.types.VAR_TYPE)
@@ -157,11 +175,13 @@ class FrictionWorld(World):
         return None
 
     @staticmethod
-    def execute(lf: str) -> int:
+    def execute(lf_raw: str) -> int:
         """
         Very basic model for executing friction logical forms. For now returns answer index (or
         -1 if no answer can be concluded)
         """
+        # Remove "a:" prefixes from attributes (hack)
+        lf = re.sub(r"\(a:",r"(",lf_raw)
         parse = semparse_util.lisp_to_nested_expression(lf)
         if len(parse) < 1 and len(parse[0]) < 2:
             return -1

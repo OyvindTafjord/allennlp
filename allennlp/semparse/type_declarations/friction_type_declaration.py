@@ -23,9 +23,6 @@ class FrictionTypeDeclaration:
 
         self.BASIC_TYPES = {NUM_TYPE, ATTR_TYPE, RDIR_TYPE, WORLD_TYPE, VAR_TYPE}
 
-        # Hack to expose it
-        self.WORLD_TYPE = WORLD_TYPE
-
         # Flag to swap between three possible LF conventions
         # with_q_state: (infer (qstate <attr> <rdir> <world>) (qstate <attr> <rdir> <world>) (qstate <attr> <rdir> <world>))
         # with_variable: WIP
@@ -100,6 +97,30 @@ class FrictionTypeDeclaration:
             self.add_common_name_with_type("speed", "A12", ATTR_FUNCTION_TYPE)
             self.add_common_name_with_type("heat", "A13", ATTR_FUNCTION_TYPE)
             self.add_common_name_with_type("distance", "A14", ATTR_FUNCTION_TYPE)
+
+            # For simplicity we treat "high" and "low" as directions as well
+            self.add_common_name_with_type("high", "R12", RDIR_TYPE)
+            self.add_common_name_with_type("low", "R13", RDIR_TYPE)
+            self.add_common_name_with_type("and", "C10", AND_FUNCTION_TYPE)
+
+            self.CURRIED_FUNCTIONS = {
+                ATTR_FUNCTION_TYPE: 2,
+                INFER_FUNCTION_TYPE: 3,
+                AND_FUNCTION_TYPE: 2
+            }
+        elif syntax == "with_type_2_attr_entities":
+            # attributes: <<QDIR, <WORLD, ATTR>>
+            ATTR_FUNCTION_TYPE = ComplexType(RDIR_TYPE,
+                                             ComplexType(WORLD_TYPE, ATTR_TYPE))
+
+            AND_FUNCTION_TYPE = ComplexType(ATTR_TYPE, ComplexType(ATTR_TYPE, ATTR_TYPE))
+
+            # infer: <ATTR, <ATTR, <ATTR, NUM>>>
+            INFER_FUNCTION_TYPE = ComplexType(ATTR_TYPE,
+                                              ComplexType(ATTR_TYPE,
+                                                          ComplexType(ATTR_TYPE, NUM_TYPE)))
+            self.add_common_name_with_type("infer", "I10", INFER_FUNCTION_TYPE)
+            self.add_common_name_with_type("fakeattr", "A99", ATTR_FUNCTION_TYPE)
 
             # For simplicity we treat "high" and "low" as directions as well
             self.add_common_name_with_type("high", "R12", RDIR_TYPE)
@@ -210,6 +231,10 @@ class FrictionTypeDeclaration:
         if syntax != "with_type_2_world_entities":
             self.add_common_name_with_type("world1", "W11", WORLD_TYPE)
             self.add_common_name_with_type("world2", "W12", WORLD_TYPE)
+
+        # Hack to expose types
+        self.WORLD_TYPE = WORLD_TYPE
+        self.ATTR_FUNCTION_TYPE = ATTR_FUNCTION_TYPE
 
         self.STARTING_TYPES = [NUM_TYPE]
 
