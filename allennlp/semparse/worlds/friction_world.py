@@ -128,6 +128,13 @@ class FrictionWorld(World):
     }
 
     @staticmethod
+    def get_qr_coeff(attr1, attr2):
+        for d in FrictionWorld.qr_coeff_sets:
+            if attr1 in d and attr2 in d:
+                return d[attr1] * d[attr2]
+        return 0
+
+    @staticmethod
     def check_compatible(setup: List, answer: List) -> bool:
         attributes = {setup[0], answer[0]}
         qr_coeff = None

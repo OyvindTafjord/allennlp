@@ -8,7 +8,9 @@ from allennlp.common.file_utils import cached_path
 from allennlp.common.util import JsonDict, sanitize
 from allennlp.data import DatasetReader, Instance
 from allennlp.models import Model
+from allennlp.semparse.friction_q_util import get_explanation
 from allennlp.service.predictors.predictor import Predictor
+
 
 @Predictor.register('friction-q-parser')
 class FrictionQParserPredictor(Predictor):
@@ -44,7 +46,8 @@ class FrictionQParserPredictor(Predictor):
         if world_extractions is not None:
             world_extractions_out.update(world_extractions)
 
-        extra_info = {'question_tokens': tokenized_question,
+        extra_info = {'question': json_dict['question'],
+                      'question_tokens': tokenized_question,
                       "world_extractions": world_extractions_out}
         return instance, extra_info
 
@@ -62,4 +65,12 @@ class FrictionQParserPredictor(Predictor):
         outputs['answer'] = answer
 
         return_dict.update(outputs)
+
+        explanation = None
+        if answer != "None":
+            explanation = get_explanation(return_dict['logical_form'],
+                                  return_dict['world_extractions'],
+                                  answer_index)
+
+        return_dict['explanation'] = explanation
         return sanitize(return_dict)

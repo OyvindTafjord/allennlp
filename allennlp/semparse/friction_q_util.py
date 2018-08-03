@@ -7,6 +7,9 @@ import re
 import spacy
 
 from allennlp.data.tokenizers.word_stemmer import PorterStemmer
+from allennlp.semparse import util as semparse_util
+from allennlp.semparse.worlds import FrictionWorld
+
 
 
 # Various simple helper functions for WorldExtractor below
@@ -65,6 +68,79 @@ def split_question(question):
     return re.split(r' *\([A-F]\) *', question)
 
 
+def nl_triple(triple, nl_world):
+    return f"{triple[0].capitalize()} is {triple[1]} for {nl_world[triple[2]]}"
+
+
+def nl_arg(arg, nl_world):
+    if arg[0] == 'and':
+        return [nl_arg(x, nl_world) for x in arg[1:]]
+    else:
+        return [nl_triple(arg, nl_world)]
+
+
+def nl_dir(sign):
+    if sign == 1:
+        return "higher"
+    else:
+        return "lower"
+
+
+def get_explanation(logical_form, world_extractions, answer_index):
+    """
+    Create explanation (as a list of header/content entries) for an answer
+    """
+    output = []
+    nl_world = {}
+    if world_extractions['world1'] != "N/A":
+        nl_world['world1'] = f'''"{world_extractions['world1']}"'''
+        nl_world['world2'] = f'''"{world_extractions['world2']}"'''
+        output.append({
+            "header": "Identified two worlds",
+            "content": [f'''world1 = {nl_world['world1']}''',
+                        f'''world2 = {nl_world['world2']}''']
+        })
+    else:
+        nl_world['world1'] = 'world1'
+        nl_world['world2'] = 'world2'
+    parse = semparse_util.lisp_to_nested_expression(logical_form)
+    if parse[0][0] != "infer":
+        return None
+    setup = parse[0][1]
+    output.append({
+        "header": "The question is stating",
+        "content": nl_arg(setup, nl_world)
+    })
+    answers = parse[0][2:]
+    output.append({
+        "header": "The answer options are stating",
+        "content": ["A: " + " and ".join(nl_arg(answers[0], nl_world)),
+                    "B: " + " and ".join(nl_arg(answers[1], nl_world))]
+    })
+    setup_core = setup
+    if setup[0] == 'and':
+        setup_core = setup[1]
+    s_attr = setup_core[0]
+    s_dir = FrictionWorld.qr_size[setup_core[1]]
+    s_world = nl_world[setup_core[2]]
+    a_attr = answers[answer_index][0]
+    qr_dir = FrictionWorld.get_qr_coeff(s_attr, a_attr)
+    a_dir = s_dir * qr_dir
+    a_world = nl_world[answers[answer_index][2]]
+
+    content = [f'''When {s_attr} is {nl_dir(s_dir)} then {a_attr} is {nl_dir(a_dir)} (for {s_world})''']
+    if a_world != s_world:
+        content.append(f'''Therefore {a_attr} is {nl_dir(-a_dir)} for {a_world}''')
+    content.append(f"Therefore {chr(65+answer_index)} is the correct answer")
+
+    output.append({
+        "header": "Theory used",
+        "content": content
+    })
+
+    return output
+
+
 class WorldExtractor():
     def __init__(self):
         self._stemmer = PorterStemmer().stemmer
@@ -92,6 +168,10 @@ class WorldExtractor():
             answer_key_words.append(res)
         worlds = []
 
+        if len(answer_key_words) == 0:
+            print(question)
+            print(answers)
+            print(answers_words)
         # If there are words left in answer options, try to treat them as worlds
         if min([len(x) for x in answer_key_words]) > 0 and answer_key_words[0] != answer_key_words[1]:
             different_last_words = answer_key_words[0][-1] != answer_key_words[1][-1]
