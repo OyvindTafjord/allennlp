@@ -26,7 +26,7 @@ from allennlp.data.dataset_readers.dataset_reader import DatasetReader
 from allennlp.data.dataset_readers.seq2seq import START_SYMBOL, END_SYMBOL
 from allennlp.semparse.contexts import TableQuestionKnowledgeGraph
 from allennlp.semparse.contexts.knowledge_graph import KnowledgeGraph
-from allennlp.semparse.friction_q_util import WorldExtractor
+from allennlp.semparse.friction_q_util import WorldExtractor, LEXICAL_CUES
 from allennlp.semparse.worlds import FrictionWorld
 
 
@@ -100,6 +100,7 @@ class FrictionQDatasetReader(DatasetReader):
                  skip_attributes_regex: Optional[str] = None,
                  entity_tag_mode: Optional[str] = None,
                  entity_types: Optional[List[str]] = None,
+                 lexical_cues: List[str] = None,
                  tokenizer: Tokenizer = None,
                  question_token_indexers: Dict[str, TokenIndexer] = None) -> None:
         super().__init__(lazy=lazy)
@@ -132,6 +133,7 @@ class FrictionQDatasetReader(DatasetReader):
         self._skip_attributes_regex = None
         if skip_attributes_regex is not None:
             self._skip_attributes_regex = re.compile(skip_attributes_regex)
+        self._lexical_cues = lexical_cues
 
         all_entities = {}
         all_entities["comparison"] = ["distance-higher", "distance-lower", "friction-higher",
@@ -176,7 +178,13 @@ class FrictionQDatasetReader(DatasetReader):
                     if (self._skip_attributes_regex is not None and
                             self._skip_attributes_regex.search(k)):
                         continue
-                    self._dynamic_entities["a:"+k] = k
+                    entity_strings = [k]
+                    if self._lexical_cues is not None:
+                        for key in self._lexical_cues:
+                            if k in LEXICAL_CUES[key]:
+                                entity_strings += LEXICAL_CUES[key][k]
+                    self._dynamic_entities["a:"+k] = " ".join(entity_strings)
+            logger.info(f"DYNAMIC ENTITIES = {self._dynamic_entities}")
 
             neighbors = {key: [] for key in self._dynamic_entities.keys()}
             self._knowledge_graph = KnowledgeGraph(entities=set(self._dynamic_entities.keys()),
@@ -661,6 +669,7 @@ class FrictionQDatasetReader(DatasetReader):
         denotation_only = params.pop('denotation_only', False)
         skip_attributes_regex = params.pop('skip_attributes_regex', None)
         lf_syntax = params.pop('lf_syntax', None)
+        lexical_cues = params.pop('lexical_cues', None)
         tokenizer = Tokenizer.from_params(params.pop('tokenizer', {}))
         question_token_indexers = TokenIndexer.dict_from_params(params.pop('question_token_indexers', {}))
         params.assert_empty(cls.__name__)
@@ -686,4 +695,5 @@ class FrictionQDatasetReader(DatasetReader):
                                       skip_attributes_regex=skip_attributes_regex,
                                       entity_types=entity_types,
                                       tokenizer=tokenizer,
+                                      lexical_cues=lexical_cues,
                                       question_token_indexers=question_token_indexers)

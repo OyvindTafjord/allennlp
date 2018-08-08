@@ -11,6 +11,22 @@ from allennlp.semparse import util as semparse_util
 from allennlp.semparse.worlds import FrictionWorld
 
 
+LEXICAL_CUES = {}
+
+LEXICAL_CUES["synonyms"] = {
+    "friction":["resistance","traction"],
+    "speed":["velocity","pace"],
+    "distance":["length","way"],
+    "heat":["temperature","warmth","smoke"],
+    "smoothness":["slickness","roughness"]}
+
+LEXICAL_CUES["values"] = {
+    "friction":[],
+    "speed":["fast","slow","faster","slower","slowly","quickly","rapidly"],
+    "distance":["far","near","further","longer","shorter","long","short","farther","furthest"],
+    "heat":["hot","hotter","cold","colder"],
+    "smoothness":["rough","smooth","rougher","smoother","bumpy","slicker"]}
+
 
 # Various simple helper functions for WorldExtractor below
 def get_words(string):
