@@ -99,12 +99,6 @@ class FrictionWorld(World):
     def get_valid_starting_types(self) -> Set[Type]:
         return self.types.STARTING_TYPES
 
-    def is_table_entity(self, entity_name: str) -> bool:
-        """
-        Returns ``True`` if the given entity is one of the entities in the table.
-        """
-        return False
-
     # Simple table for how attributes relates to each other
 
     qr_coeff_sets = [{"friction": 1, "speed": -1, "smoothness": -1, "distance": -1, "heat": 1},
