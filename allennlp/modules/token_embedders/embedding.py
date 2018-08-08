@@ -137,7 +137,8 @@ class Embedding(TokenEmbedder):
         """
         num_embeddings = params.pop_int('num_embeddings', None)
         vocab_namespace = params.pop("vocab_namespace", "tokens")
-        if num_embeddings is None:
+        num_embeddings_min = num_embeddings
+        if num_embeddings is None or vocab is not None:
             num_embeddings = vocab.get_vocab_size(vocab_namespace)
         embedding_dim = params.pop_int('embedding_dim')
         pretrained_file = params.pop("pretrained_file", None)
@@ -157,7 +158,10 @@ class Embedding(TokenEmbedder):
             weight = _read_pretrained_embedding_file(pretrained_file,
                                                      embedding_dim,
                                                      vocab,
-                                                     vocab_namespace)
+                                                     vocab_namespace,
+                                                     num_embeddings_min)
+            if num_embeddings_min is not None:
+                num_embeddings = vocab.get_vocab_size(vocab_namespace)
         else:
             weight = None
 
@@ -176,7 +180,8 @@ class Embedding(TokenEmbedder):
 def _read_pretrained_embedding_file(embeddings_filename: str,
                                     embedding_dim: int,
                                     vocab: Vocabulary,
-                                    namespace: str = "tokens") -> torch.FloatTensor:
+                                    namespace: str = "tokens",
+                                    num_embeddings_min: int = None) -> torch.FloatTensor:
     """
     Reads a pre-trained embedding file and generates an Embedding layer that has weights
     initialized to the pre-trained embeddings.  The Embedding layer can either be trainable or
@@ -210,13 +215,15 @@ def _read_pretrained_embedding_file(embeddings_filename: str,
     else:
         # default to word2vec
         return _read_pretrained_word2vec_format_embedding_file(embeddings_filename, embedding_dim,
-                                                               vocab, namespace)
+                                                               vocab, namespace,
+                                                               num_embeddings_min)
 
 
 def _read_pretrained_word2vec_format_embedding_file(embeddings_filename: str, # pylint: disable=invalid-name
                                                     embedding_dim: int,
                                                     vocab: Vocabulary,
-                                                    namespace: str = "tokens") -> torch.FloatTensor:
+                                                    namespace: str = "tokens",
+                                                    num_embeddings_min: int = None) -> torch.FloatTensor:
     """
     Read from a gzipped-word2vec format file.  The embeddings file is assumed to be gzipped and
     space delimited, e.g. [word] [dim 1] [dim 2] ...
@@ -224,13 +231,12 @@ def _read_pretrained_word2vec_format_embedding_file(embeddings_filename: str, # 
     The remainder of the docstring is identical to ``_read_pretrained_embedding_file``.
     """
     words_to_keep = set(vocab.get_index_to_token_vocabulary(namespace).values())
-    vocab_size = vocab.get_vocab_size(namespace)
     embeddings = {}
 
     # First we read the embeddings from the file, only keeping vectors for the words we need.
     logger.info("Reading embeddings from file")
     with gzip.open(cached_path(embeddings_filename), 'rb') as embeddings_file:
-        for line in embeddings_file:
+        for line_num, line in enumerate(embeddings_file):
             fields = line.decode('utf-8').rstrip().split(' ')
             if len(fields) - 1 != embedding_dim:
                 # Sometimes there are funny unicode parsing problems that lead to different
@@ -244,9 +250,14 @@ def _read_pretrained_word2vec_format_embedding_file(embeddings_filename: str, # 
                                embedding_dim, len(fields) - 1, line)
                 continue
             word = fields[0]
-            if word in words_to_keep:
+            if word in words_to_keep or (num_embeddings_min is not None
+                                         and line_num < num_embeddings_min):
                 vector = numpy.asarray(fields[1:], dtype='float32')
                 embeddings[word] = vector
+                if word not in words_to_keep:
+                    vocab.add_token_to_namespace(word, namespace)
+
+    vocab_size = vocab.get_vocab_size(namespace)
 
     if not embeddings:
         raise ConfigurationError("No embeddings of correct dimension found; you probably "
