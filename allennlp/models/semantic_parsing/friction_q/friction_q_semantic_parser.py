@@ -103,7 +103,10 @@ class FrictionQSemanticParser(Model):
         super(FrictionQSemanticParser, self).__init__(vocab)
         self._question_embedder = question_embedder
         self._encoder = encoder
-        self._entity_encoder = TimeDistributed(entity_encoder)
+        if entity_encoder is not None:
+            self._entity_encoder = TimeDistributed(entity_encoder)
+        else:
+            self._entity_encoder = None
         self._beam_search = decoder_beam_search
         self._max_decoding_steps = max_decoding_steps
         self._use_neighbor_similarity_for_linking = use_neighbor_similarity_for_linking
@@ -129,7 +132,7 @@ class FrictionQSemanticParser(Model):
 
         self._use_entities= use_entities
 
-        if self._use_entities:
+        if self._use_entities and self._entity_encoder is not None:
             check_dimensions_match(entity_encoder.get_output_dim(), question_embedder.get_output_dim(),
                                    "entity word average embedding dim", "question embedding dim")
 
@@ -260,35 +263,36 @@ class FrictionQSemanticParser(Model):
         batch_size, num_entities, num_entity_tokens, _ = embedded_table.size()
 
         if self._use_entities:
-            # (batch_size, num_entities, embedding_dim)
-            encoded_table = self._entity_encoder(embedded_table, table_mask)
-            # (batch_size, num_entities, num_neighbors)
-            neighbor_indices = self._get_neighbor_indices(world, num_entities, encoded_table)
-
-            # Neighbor_indices is padded with -1 since 0 is a potential neighbor index.
-            # Thus, the absolute value needs to be taken in the index_select, and 1 needs to
-            # be added for the mask since that method expects 0 for padding.
-            # (batch_size, num_entities, num_neighbors, embedding_dim)
-            embedded_neighbors = util.batched_index_select(encoded_table, torch.abs(neighbor_indices))
-
-            neighbor_mask = util.get_text_field_mask({'ignored': neighbor_indices + 1},
-                                                     num_wrapping_dims=1).float()
-
-            # Encoder initialized to easily obtain a masked average.
-            neighbor_encoder = TimeDistributed(BagOfEmbeddingsEncoder(self._embedding_dim, averaged=True))
-            # (batch_size, num_entities, embedding_dim)
-            embedded_neighbors = neighbor_encoder(embedded_neighbors, neighbor_mask)
-
             # entity_types: one-hot tensor with shape (batch_size, num_entities, num_types)
             # entity_type_dict: Dict[int, int], mapping flattened_entity_index -> type_index
             # These encode the same information, but for efficiency reasons later it's nice
             # to have one version as a tensor and one that's accessible on the cpu.
-            entity_types, entity_type_dict = self._get_type_vector(world, num_entities, encoded_table)
+            entity_types, entity_type_dict = self._get_type_vector(world, num_entities, embedded_table)
 
-            entity_type_embeddings = self._type_params(entity_types.float())
-            projected_neighbor_embeddings = self._neighbor_params(embedded_neighbors.float())
-            # (batch_size, num_entities, embedding_dim)
-            entity_embeddings = torch.nn.functional.tanh(entity_type_embeddings + projected_neighbor_embeddings)
+            if self._entity_encoder is not None:
+                # (batch_size, num_entities, embedding_dim)
+                encoded_table = self._entity_encoder(embedded_table, table_mask)
+                # (batch_size, num_entities, num_neighbors)
+                neighbor_indices = self._get_neighbor_indices(world, num_entities, encoded_table)
+
+                # Neighbor_indices is padded with -1 since 0 is a potential neighbor index.
+                # Thus, the absolute value needs to be taken in the index_select, and 1 needs to
+                # be added for the mask since that method expects 0 for padding.
+                # (batch_size, num_entities, num_neighbors, embedding_dim)
+                embedded_neighbors = util.batched_index_select(encoded_table, torch.abs(neighbor_indices))
+
+                neighbor_mask = util.get_text_field_mask({'ignored': neighbor_indices + 1},
+                                                         num_wrapping_dims=1).float()
+
+                # Encoder initialized to easily obtain a masked average.
+                neighbor_encoder = TimeDistributed(BagOfEmbeddingsEncoder(self._embedding_dim, averaged=True))
+                # (batch_size, num_entities, embedding_dim)
+                embedded_neighbors = neighbor_encoder(embedded_neighbors, neighbor_mask)
+
+                entity_type_embeddings = self._type_params(entity_types.float())
+                projected_neighbor_embeddings = self._neighbor_params(embedded_neighbors.float())
+                # (batch_size, num_entities, embedding_dim)
+                entity_embeddings = torch.nn.functional.tanh(entity_type_embeddings + projected_neighbor_embeddings)
 
 
             # Compute entity and question word cosine similarity. Need to add a small value to
@@ -348,10 +352,13 @@ class FrictionQSemanticParser(Model):
             linking_probabilities = self._get_linking_probabilities(world, linking_scores.transpose(1, 2),
                                                                     question_mask, entity_type_dict)
 
-            # (batch_size, num_question_tokens, embedding_dim)
-            link_embedding = util.weighted_sum(entity_embeddings, linking_probabilities)
+            if self._entity_encoder is not None:
+                # (batch_size, num_question_tokens, embedding_dim)
+                link_embedding = util.weighted_sum(entity_embeddings, linking_probabilities)
 
-            encoder_input = torch.cat([link_embedding, embedded_question], 2)
+                encoder_input = torch.cat([link_embedding, embedded_question], 2)
+            else:
+                encoder_input = embedded_question
         else:
             if entity_tag is not None and not self._entity_tag_output:
                 encoder_input = torch.cat([embedded_question, entity_tag], 2)
@@ -982,7 +989,9 @@ class FrictionQSemanticParser(Model):
         question_embedder = TextFieldEmbedder.from_params(vocab, params.pop("question_embedder"))
         action_embedding_dim = params.pop_int("action_embedding_dim")
         encoder = Seq2SeqEncoder.from_params(params.pop("encoder"))
-        entity_encoder = Seq2VecEncoder.from_params(params.pop('entity_encoder'))
+        entity_encoder = params.pop('entity_encoder', None)
+        if entity_encoder is not None:
+            entity_encoder = Seq2VecEncoder.from_params(entity_encoder)
         max_decoding_steps = params.pop_int("max_decoding_steps")
         mixture_feedforward_type = params.pop('mixture_feedforward', None)
         action_similarity_dim = params.pop('action_similarity_dim', 0)
