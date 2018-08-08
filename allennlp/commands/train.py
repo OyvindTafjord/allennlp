@@ -41,6 +41,7 @@ from copy import deepcopy
 import torch
 
 from allennlp.commands.evaluate import evaluate
+from allennlp.commands.evaluate_custom import evaluate as evaluate_custom
 from allennlp.commands.subcommand import Subcommand
 from allennlp.common.checks import ConfigurationError, check_for_gpu
 from allennlp.common import Params
@@ -271,9 +272,10 @@ def train_model(params: Params,
                                    (instance for key, dataset in all_datasets.items()
                                     for instance in dataset
                                     if key in datasets_for_vocab_creation))
-    vocab.save_to_files(os.path.join(serialization_dir, "vocabulary"))
 
     model = Model.from_params(vocab, params.pop('model'))
+    vocab.save_to_files(os.path.join(serialization_dir, "vocabulary"))
+
     iterator = DataIterator.from_params(params.pop("iterator"))
     iterator.index_with(vocab)
 
@@ -290,6 +292,7 @@ def train_model(params: Params,
                                   trainer_params)
 
     evaluate_on_test = params.pop_bool("evaluate_on_test", False)
+    evaluate_custom_params = params.pop("evaluate_custom", None)
     params.assert_empty('base train command')
 
     try:
@@ -320,6 +323,18 @@ def train_model(params: Params,
     elif test_data:
         logger.info("To evaluate on the test set after training, pass the "
                     "'evaluate_on_test' flag, or use the 'allennlp evaluate' command.")
+
+    if evaluate_custom_params is not None:
+        metadata_fields = evaluate_custom_params.get('metadata_fields')
+        if isinstance(metadata_fields, list):
+            metadata_fields = ",".join(metadata_fields)
+        output_file = os.path.join(serialization_dir, "eval_validation.json")
+        validation_metrics = evaluate_custom(best_model, validation_data, iterator,
+                                             cuda_device=trainer._cuda_devices[0],
+                                             output_file=output_file,
+                                             metadata_fields=metadata_fields)
+        for key, value in validation_metrics.items():
+            metrics["eval_validation_" + key] = value
 
     metrics_json = json.dumps(metrics, indent=2)
     with open(os.path.join(serialization_dir, "metrics.json"), "w") as metrics_file:
