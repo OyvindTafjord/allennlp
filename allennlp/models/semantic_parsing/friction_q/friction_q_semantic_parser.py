@@ -98,6 +98,7 @@ class FrictionQSemanticParser(Model):
                  denotation_only: bool = False,
                  tagging_loss_coeff: float = 1.0,
                  entity_tag_normalizer: str = "softmax",
+                 entity_similarity_mode: str = "dot_product",
                  rule_namespace: str = 'rule_labels',
                  tables_directory: str = '/wikitables/') -> None:
         super(FrictionQSemanticParser, self).__init__(vocab)
@@ -131,7 +132,6 @@ class FrictionQSemanticParser(Model):
         self._action_similarity_dim = action_similarity_dim
 
         self._use_entities= use_entities
-
         if self._use_entities and self._entity_encoder is not None:
             check_dimensions_match(entity_encoder.get_output_dim(), question_embedder.get_output_dim(),
                                    "entity word average embedding dim", "question embedding dim")
@@ -141,6 +141,20 @@ class FrictionQSemanticParser(Model):
         self._embedding_dim = question_embedder.get_output_dim()
         self._type_params = torch.nn.Linear(self._num_entity_types, self._embedding_dim)
         self._neighbor_params = torch.nn.Linear(self._embedding_dim, self._embedding_dim)
+
+        self._entity_similarity_layer = None
+        self._entity_similarity_mode = entity_similarity_mode
+        if self._entity_similarity_mode == "weighted_dot_product":
+            self._entity_similarity_layer = \
+                TimeDistributed(torch.nn.Linear(self._embedding_dim, 1, bias=False))
+            # Center initial values around unweighted dot product
+            # self._entity_similarity_layer._module.weight.data.zero_()
+            self._entity_similarity_layer._module.weight.data += 1
+            # self._entity_similarity_layer._module.weight = torch.nn.Parameter(data=self._entity_similarity_layer._module.weight.data, requires_grad=False)
+        elif self._entity_similarity_mode == "dot_product":
+            pass
+        else:
+            raise ValueError("Invalid entity_similarity_mode: {}".format(self._entity_similarity_mode))
 
         if num_linking_features > 0:
             self._linking_params = torch.nn.Linear(num_linking_features, 1)
@@ -295,27 +309,49 @@ class FrictionQSemanticParser(Model):
                 entity_embeddings = torch.nn.functional.tanh(entity_type_embeddings + projected_neighbor_embeddings)
 
 
-            # Compute entity and question word cosine similarity. Need to add a small value to
-            # to the table norm since there are padding values which cause a divide by 0.
-            embedded_table = embedded_table / (embedded_table.norm(dim=-1, keepdim=True) + 1e-13)
-            embedded_question = embedded_question / (embedded_question.norm(dim=-1, keepdim=True) + 1e-13)
-            question_entity_similarity = torch.bmm(embedded_table.view(batch_size,
-                                                                       num_entities * num_entity_tokens,
-                                                                       self._embedding_dim),
-                                                   torch.transpose(embedded_question, 1, 2))
+            if self._entity_similarity_mode == "dot_product":
+                # Compute entity and question word cosine similarity. Need to add a small value to
+                # to the table norm since there are padding values which cause a divide by 0.
+                embedded_table = embedded_table / (embedded_table.norm(dim=-1, keepdim=True) + 1e-13)
+                embedded_question = embedded_question / (embedded_question.norm(dim=-1, keepdim=True) + 1e-13)
+                question_entity_similarity = torch.bmm(embedded_table.view(batch_size,
+                                                                           num_entities * num_entity_tokens,
+                                                                           self._embedding_dim),
+                                                       torch.transpose(embedded_question, 1, 2))
 
-            question_entity_similarity = question_entity_similarity.view(batch_size,
-                                                                         num_entities,
-                                                                         num_entity_tokens,
-                                                                         num_question_tokens)
+                question_entity_similarity = question_entity_similarity.view(batch_size,
+                                                                             num_entities,
+                                                                             num_entity_tokens,
+                                                                             num_question_tokens)
 
-            # (batch_size, num_entities, num_question_tokens)
-            question_entity_similarity_max_score, _ = torch.max(question_entity_similarity, 2)
+                # (batch_size, num_entities, num_question_tokens)
+                question_entity_similarity_max_score, _ = torch.max(question_entity_similarity, 2)
+
+                linking_scores = question_entity_similarity_max_score
+            elif self._entity_similarity_mode == "weighted_dot_product":
+                embedded_table = embedded_table / (embedded_table.norm(dim=-1, keepdim=True) + 1e-13)
+                embedded_question = embedded_question / (embedded_question.norm(dim=-1, keepdim=True) + 1e-13)
+                eqe = embedded_question.unsqueeze(1).expand(-1, num_entities*num_entity_tokens, -1, -1)
+                ete = embedded_table.view(batch_size, num_entities*num_entity_tokens, self._embedding_dim)
+                ete = ete.unsqueeze(2).expand(-1, -1, num_question_tokens, -1)
+                product = torch.mul(eqe, ete)
+                product = product.view(batch_size,
+                                       num_question_tokens*num_entities*num_entity_tokens,
+                                       self._embedding_dim)
+                question_entity_similarity = self._entity_similarity_layer(product)
+                question_entity_similarity = question_entity_similarity.view(batch_size,
+                                                                             num_entities,
+                                                                             num_entity_tokens,
+                                                                             num_question_tokens)
+
+                # (batch_size, num_entities, num_question_tokens)
+                question_entity_similarity_max_score, _ = torch.max(question_entity_similarity, 2)
+                linking_scores = question_entity_similarity_max_score
+            else:
+                pass
 
             # (batch_size, num_entities, num_question_tokens, num_features)
             linking_features = table['linking']
-
-            linking_scores = question_entity_similarity_max_score
 
             if self._use_neighbor_similarity_for_linking:
                 # The linking score is computed as a linear projection of two terms. The first is the
@@ -1021,6 +1057,7 @@ class FrictionQSemanticParser(Model):
         entity_tag_output = params.pop_bool('entity_tag_output', False)
         denotation_only = params.pop_bool('denotation_only', False)
         rule_namespace = params.pop('rule_namespace', 'rule_labels')
+        entity_similarity_mode = params.pop('entity_similarity_mode', 'dot_product')
         tables_directory = params.pop('tables_directory', '/wikitables/')
         params.assert_empty(cls.__name__)
         return cls(vocab,
@@ -1042,6 +1079,7 @@ class FrictionQSemanticParser(Model):
                    num_linking_features=num_linking_features,
                    num_entity_tags=num_entity_tags,
                    entity_tag_output=entity_tag_output,
+                   entity_similarity_mode=entity_similarity_mode,
                    denotation_only=denotation_only,
                    rule_namespace=rule_namespace,
                    tables_directory=tables_directory)
