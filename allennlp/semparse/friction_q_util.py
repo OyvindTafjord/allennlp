@@ -18,14 +18,44 @@ LEXICAL_CUES["synonyms"] = {
     "speed":["velocity","pace"],
     "distance":["length","way"],
     "heat":["temperature","warmth","smoke"],
-    "smoothness":["slickness","roughness"]}
+    "smoothness":["slickness","roughness"],
+    "acceleration":[],
+    "amountSweat":["sweat"],
+    "apparentSize":["size"],
+    "breakability":["brittleness"],
+    "brightness":[],
+    "exerciseIntensity":["excercise"],
+    "flexibility":[],
+    "gravity":[],
+    "loudness":[],
+    "mass":["weight"],
+    "strength":["power"],
+    "thickness":[],
+    "time":[],
+    "weight":["mass"]
+}
 
 LEXICAL_CUES["values"] = {
     "friction":[],
     "speed":["fast","slow","faster","slower","slowly","quickly","rapidly"],
     "distance":["far","near","further","longer","shorter","long","short","farther","furthest"],
     "heat":["hot","hotter","cold","colder"],
-    "smoothness":["rough","smooth","rougher","smoother","bumpy","slicker"]}
+    "smoothness":["rough","smooth","rougher","smoother","bumpy","slicker"],
+    "acceleration":[],
+    "amountSweat":["sweaty"],
+    "apparentSize":["large","small","larger","smaller"],
+    "breakability":["brittle","break","solid"],
+    "brightness":["bright","shiny","faint"],
+    "exerciseIntensity":["run","walk"],
+    "flexibility":["flexible","stiff","rigid"],
+    "gravity":[],
+    "loudness":["loud","faint","louder","fainter"],
+    "mass":["heavy","light","heavier","lighter","massive"],
+    "strength":["strong","weak","stronger","weaker"],
+    "thickness":["thick","thin","thicker","thinner","skinny"],
+    "time":["long","short",],
+    "weight":["heavy","light","heavier","lighter"]
+}
 
 
 # Various simple helper functions for WorldExtractor below

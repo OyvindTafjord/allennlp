@@ -108,7 +108,7 @@ class FrictionTypeDeclaration:
                 INFER_FUNCTION_TYPE: 3,
                 AND_FUNCTION_TYPE: 2
             }
-        elif syntax == "with_type_2_attr_entities":
+        elif syntax == "with_type_2_attr_entities" or syntax == "with_type_2_general_attr_entities":
             # attributes: <<QDIR, <WORLD, ATTR>>
             ATTR_FUNCTION_TYPE = ComplexType(RDIR_TYPE,
                                              ComplexType(WORLD_TYPE, ATTR_TYPE))
