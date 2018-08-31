@@ -40,8 +40,9 @@ class FrictionWorld(World):
         # For every new Sempre column name seen, we update this counter to map it to a new NLTK name.
         self._column_counter = 0
 
-        self._attribute_counter = 0
-        self._attribute_index_map = dict()
+        # Keep map and counter for each entity type encountered (first letter in entity string)
+        self._entity_index_maps = dict()
+        self._entity_counters = dict()
 
         # This adds all of the cell and column names to our local name mapping, including null
         # cells and columns and a few simple numbers, so we can get them as valid actions in the
@@ -58,12 +59,17 @@ class FrictionWorld(World):
         """
         return entity_name in self._entity_set
 
-    def attribute_index(self, attribute: str) -> int:
-        if attribute not in self._attribute_index_map:
-            self._attribute_index_map[attribute] = self._attribute_counter
-            self._attribute_counter += 1
-        return self._attribute_index_map[attribute]
 
+    def entity_index(self, entity) -> int:
+        entity_type = entity[0]
+        if entity_type not in self._entity_counters:
+            self._entity_counters[entity_type] = 0
+            self._entity_index_maps[entity_type] = dict()
+        entity_index_map = self._entity_index_maps[entity_type]
+        if entity not in entity_index_map:
+            entity_index_map[entity] = self._entity_counters[entity_type]
+            self._entity_counters[entity_type] += 1
+        return entity_index_map[entity]
 
     @overrides
     def _map_name(self, name: str, keep_mapping: bool = False) -> str:
@@ -80,12 +86,19 @@ class FrictionWorld(World):
                 # Hack to avoid world entities
                 self._add_name_mapping(name, translated_name, self.types.VAR_TYPE)
         elif name.startswith("a:"):
-            translated_name = "A"+str(10+self.attribute_index(name))
+            translated_name = "A"+str(10+self.entity_index(name))
             if "_attr_entities" in self._syntax:
                 self._add_name_mapping(name, translated_name, self.types.ATTR_FUNCTION_TYPE)
             else:
                 # Hack to avoid world entities
                 self._add_name_mapping(name, translated_name, self.types.VAR_TYPE)
+        elif name.startswith("o:"):
+            translated_name = "O"+str(10+self.entity_index(name))
+            self._add_name_mapping(name, translated_name, self.types.ORGANISM_TYPE)
+        elif name.startswith("s:"):
+            translated_name = "S"+str(10+self.entity_index(name))
+            self._add_name_mapping(name, translated_name, self.types.STAGE_TYPE)
+
         return translated_name
 
     def _get_curried_functions(self) -> Dict[Type, int]:

@@ -26,7 +26,8 @@ from allennlp.data.dataset_readers.dataset_reader import DatasetReader
 from allennlp.data.dataset_readers.seq2seq import START_SYMBOL, END_SYMBOL
 from allennlp.semparse.contexts import TableQuestionKnowledgeGraph
 from allennlp.semparse.contexts.knowledge_graph import KnowledgeGraph
-from allennlp.semparse.friction_q_util import WorldExtractor, LEXICAL_CUES
+from allennlp.semparse.friction_q_util import WorldExtractor, LEXICAL_CUES, words_from_entity_string
+from allennlp.semparse.friction_q_util import LIFE_CYCLE_ORGANISMS, LIFE_CYCLE_STAGES
 from allennlp.semparse.worlds import FrictionWorld
 
 
@@ -178,7 +179,7 @@ class FrictionQDatasetReader(DatasetReader):
                     if (self._skip_attributes_regex is not None and
                             self._skip_attributes_regex.search(k)):
                         continue
-                    entity_strings = [k]
+                    entity_strings = [words_from_entity_string(k.lower())]
                     if self._lexical_cues is not None:
                         for key in self._lexical_cues:
                             if k in LEXICAL_CUES[key]:
@@ -186,11 +187,23 @@ class FrictionQDatasetReader(DatasetReader):
                     self._dynamic_entities["a:"+k] = " ".join(entity_strings)
             logger.info(f"DYNAMIC ENTITIES = {self._dynamic_entities}")
 
+        if lf_syntax == "life_cycle_entities":
+            self._use_attr_entities = True
+            for a in LIFE_CYCLE_ORGANISMS:
+                self._dynamic_entities["o:"+a] = a.replace("_", " ")
+            for s in LIFE_CYCLE_STAGES:
+                self._dynamic_entities["s:"+s] = s.replace("_", " ")
+
+
+        if self._use_attr_entities:
+            logger.info(f"DYNAMIC ENTITIES = {self._dynamic_entities}")
             neighbors = {key: [] for key in self._dynamic_entities.keys()}
             self._knowledge_graph = KnowledgeGraph(entities=set(self._dynamic_entities.keys()),
                                              neighbors=neighbors,
                                              entity_text=self._dynamic_entities)
             self._world = FrictionWorld(self._knowledge_graph, self._lf_syntax)
+
+
 
 
         self._random_lf_pick = False

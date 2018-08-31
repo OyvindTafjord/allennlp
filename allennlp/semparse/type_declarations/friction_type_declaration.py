@@ -21,6 +21,10 @@ class FrictionTypeDeclaration:
         WORLD_TYPE = NamedBasicType("WORLD")
         VAR_TYPE = NamedBasicType("VAR")
 
+        self.VAR_TYPE = VAR_TYPE
+
+        ATTR_FUNCTION_TYPE = None
+
         self.BASIC_TYPES = {NUM_TYPE, ATTR_TYPE, RDIR_TYPE, WORLD_TYPE, VAR_TYPE}
 
         # Flag to swap between three possible LF conventions
@@ -354,6 +358,61 @@ class FrictionTypeDeclaration:
             self.add_common_name_with_type("toadlet", "S54", STAGE_TYPE)
             self.add_common_name_with_type("young", "S55", STAGE_TYPE)
             self.add_common_name_with_type("young_adult", "S56", STAGE_TYPE)
+
+            self.add_common_name_with_type("1", "X10", STAGEIDX_TYPE)
+            self.add_common_name_with_type("2", "X11", STAGEIDX_TYPE)
+            self.add_common_name_with_type("3", "X12", STAGEIDX_TYPE)
+            self.add_common_name_with_type("4", "X13", STAGEIDX_TYPE)
+            self.add_common_name_with_type("5", "X14", STAGEIDX_TYPE)
+            self.add_common_name_with_type("6", "X15", STAGEIDX_TYPE)
+            self.add_common_name_with_type("7", "X16", STAGEIDX_TYPE)
+            self.add_common_name_with_type("last", "X17", STAGEIDX_TYPE)
+            self.add_common_name_with_type("middle", "X18", STAGEIDX_TYPE)
+
+            self.BASIC_TYPES = {NUM_TYPE, ORGANISM_TYPE, STAGE_TYPE, STAGEIDX_TYPE}
+
+        if syntax == "life_cycle_entities":
+            ORGANISM_TYPE = NamedBasicType("ORGANISM")
+            STAGE_TYPE = NamedBasicType("STAGE")
+            STAGEIDX_TYPE = NamedBasicType("STAGEIDX")
+            self.ORGANISM_TYPE = ORGANISM_TYPE
+            self.STAGE_TYPE = STAGE_TYPE
+
+            ORGANISM_FUNCTION_TYPE = ComplexType(ORGANISM_TYPE, NUM_TYPE)
+
+            ORGANISM_STAGE_FUNCTION_TYPE = ComplexType(ORGANISM_TYPE,
+                                                       ComplexType(STAGE_TYPE, NUM_TYPE))
+
+            ORGANISM_STAGE2_FUNCTION_TYPE = ComplexType(ORGANISM_TYPE,
+                                                        ComplexType(STAGE_TYPE,
+                                                                    ComplexType(STAGE_TYPE, NUM_TYPE)))
+
+            ORGANISM_STAGEIDX_FUNCTION_TYPE = ComplexType(ORGANISM_TYPE,
+                                                          ComplexType(STAGEIDX_TYPE, NUM_TYPE))
+
+            self.CURRIED_FUNCTIONS = {
+                ORGANISM_FUNCTION_TYPE: 1,
+                ORGANISM_STAGE_FUNCTION_TYPE: 2,
+                ORGANISM_STAGEIDX_FUNCTION_TYPE: 2,
+                ORGANISM_STAGE2_FUNCTION_TYPE: 3
+            }
+
+            self.add_common_name_with_type("qCorrectlyOrdered", "F10", ORGANISM_FUNCTION_TYPE)
+            self.add_common_name_with_type("qCountStages", "F11", ORGANISM_FUNCTION_TYPE)
+            self.add_common_name_with_type("qIsNotAStageOf", "F12", ORGANISM_FUNCTION_TYPE)
+            self.add_common_name_with_type("qIsAStageOf", "F13", ORGANISM_FUNCTION_TYPE)
+            self.add_common_name_with_type("qLookup", "F14", ORGANISM_FUNCTION_TYPE)
+            self.add_common_name_with_type("qCorrectlyOrdered", "F14", ORGANISM_FUNCTION_TYPE)
+            self.add_common_name_with_type("qStageBefore", "G10", ORGANISM_STAGE_FUNCTION_TYPE)
+            self.add_common_name_with_type("qNextStage", "G11", ORGANISM_STAGE_FUNCTION_TYPE)
+            self.add_common_name_with_type("qStageIndicator", "G12", ORGANISM_STAGE_FUNCTION_TYPE)
+            self.add_common_name_with_type("qStageBetween", "H10", ORGANISM_STAGE2_FUNCTION_TYPE)
+            self.add_common_name_with_type("qStageDifference", "H10", ORGANISM_STAGE2_FUNCTION_TYPE)
+            self.add_common_name_with_type("qStageAt", "J10", ORGANISM_STAGEIDX_FUNCTION_TYPE)
+
+            self.add_common_name_with_type("fake_organism", "O99", ORGANISM_TYPE)
+
+            self.add_common_name_with_type("fake_stage", "S99", STAGE_TYPE)
 
             self.add_common_name_with_type("1", "X10", STAGEIDX_TYPE)
             self.add_common_name_with_type("2", "X11", STAGEIDX_TYPE)

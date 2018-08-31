@@ -58,6 +58,32 @@ LEXICAL_CUES["values"] = {
 }
 
 
+# List of organism and stage entities for life cycle questions
+LIFE_CYCLE_ORGANISMS = ["african_goliath_beetle", "bear", "bird", "black_widow", "butterfly",
+                        "chicken", "cockroach", "cricket", "crocodile", "darkling_beetle",
+                        "dragonfly", "fish", "flea", "frog", "grasshopper", "hammerhead_shark",
+                        "hen", "human", "lice", "lizard", "longleaf_pine", "mosquito", "moth",
+                        "newt", "oviaporous_snake", "penguin", "praying_mantis", "salmon",
+                        "scorpion", "spider", "toad", "tree", "whale", "wolf"]
+
+LIFE_CYCLE_STAGES = ["adolescent", "adult", "adulthood", "alevin", "baby", "big_chick",
+                     "bottle_brush", "caterpillar", "chick", "childhood", "cocoon", "cub",
+                     "decline", "eft", "egg", "embryo", "fledgling", "foetus", "froglet",
+                     "fry", "fully_grown", "gestation", "grass", "hatchling", "juvenile",
+                     "larva", "mature", "matured_tree", "nestling", "nymph", "old", "parr",
+                     "post_spawn", "prenatal", "pullet", "pup", "pupa", "sapling", "seed",
+                     "seedling", "smolt", "snag", "spawner", "spiderling", "sprout", "subadult",
+                     "tadpole", "tadpole_with_legs", "teenage", "toadlet", "young", "young_adult"]
+
+
+# Split entity names into words (camel case, hyphen or underscore)
+_regex_decamel = re.compile(r"\B([A-Z])")
+def words_from_entity_string(entity):
+    res = entity.replace("_", " ").replace("-", " ")
+    res = _regex_decamel.sub(r" \1", res)
+    return res
+
+
 # Various simple helper functions for WorldExtractor below
 def get_words(string):
     return re.findall(r'[A-Za-z]+', string)
