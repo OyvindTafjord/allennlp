@@ -211,7 +211,7 @@ class FrictionQDatasetReader(DatasetReader):
         if self._replace_world_entities:
             self._stemmer = PorterStemmer().stemmer
 
-        if self._extract_world_entities:
+        if self._extract_world_entities or self._single_lf_extractor_aligned:
             self._world_extractor = WorldExtractor()
 
 
@@ -243,6 +243,9 @@ class FrictionQDatasetReader(DatasetReader):
                     if extractions is None:
                         continue
                     question_data_in['world_extractions'] = extractions
+                elif 'world_extractions' in question_data_in and self._single_lf_extractor_aligned:
+                    world_flip_lf = self._check_world_flip(question_data_in)
+
                 if self._entity_types is not None:
                     question_data_in['entity_literals'] = \
                         self._get_entity_literals(question_data_in)
@@ -460,6 +463,36 @@ class FrictionQDatasetReader(DatasetReader):
         res = re.sub(r'\(([A-G])\)', r"answeroption\1", question)
         res = re.sub(r" *_{3,} *", " blankblank ", res)
         return res
+
+    @staticmethod
+    def _get_first(maybe_list):
+        if not isinstance(maybe_list, list):
+            return maybe_list
+        elif len(maybe_list) == 0:
+            return None
+        else:
+            return maybe_list[0]
+
+    def _check_world_flip(self, question_data):
+        if not 'world_literals' in question_data or not 'world_extractions' in question_data:
+            return False
+        flip = False
+        world_extractions = question_data['world_extractions']
+        extracted = [self._get_first(world_extractions[key]) for key in ['world1', 'world2']]
+        literals = question_data['world_literals']
+        aligned = self._world_extractor.align(extracted, literals)
+        # If we haven't aligned two different things (including None), give up
+        if len(set(aligned)) < 2:
+            return flip
+        aligned_dict = {key: value for key, value in zip(aligned, extracted)}
+        extractions = {}
+        for key in literals.keys():
+            # if key is missing, then it must be assigned to None per above logic
+            value = aligned_dict[key] if key in aligned_dict else aligned_dict[None]
+            extractions[key] = value
+        if extractions['world1'] != extracted[0]:
+            flip = True
+        return flip
 
 
     def get_world_extractions(self, question_data):

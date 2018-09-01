@@ -1,0 +1,23 @@
+description: Life cycle textsplit baseline
+tasks:
+  - spec:
+      blueprint: allennlpfrictionqV27
+      resultPath: /output
+      args:
+        - python
+        - '-m'
+        - allennlp.run
+        - train
+        - /config.json
+        - '-s'
+        - /output
+        - '--file-friendly-logging'
+      datasetMounts:
+        - datasetId: ds_huy0ac00zofr
+          containerPath: /inputs/LCQ-v1-textsplit
+        - datasetId: ds_crvqcd2mpm2v
+          containerPath: /glove
+        - datasetId: ds_jbxy5vpnm67v
+          containerPath: /config.json
+      requirements:
+        gpuCount: 0

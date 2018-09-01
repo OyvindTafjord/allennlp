@@ -1,0 +1,23 @@
+description: General QR SP World tagged as extractions, BS=5
+tasks:
+  - spec:
+      blueprint: allennlpfrictionqV28
+      resultPath: /output
+      args:
+        - python
+        - '-m'
+        - allennlp.run
+        - train
+        - /config.json
+        - '-s'
+        - /output
+        - '--file-friendly-logging'
+      datasetMounts:
+        - datasetId: ds_lj2ibpti8tjg
+          containerPath: /inputs/generalqr-v1-taglbwe
+        - datasetId: ds_crvqcd2mpm2v
+          containerPath: /glove
+        - datasetId: ds_6frmffofexva
+          containerPath: /config.json
+      requirements:
+        gpuCount: 1

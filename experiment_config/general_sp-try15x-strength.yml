@@ -1,0 +1,23 @@
+description: General QR SP tagged extractions, dyn attr, BS=5
+tasks:
+  - spec:
+      blueprint: allennlpfrictionqV28
+      resultPath: /output
+      args:
+        - python
+        - '-m'
+        - allennlp.run
+        - train
+        - /config.json
+        - '-s'
+        - /output
+        - '--file-friendly-logging'
+      datasetMounts:
+        - datasetId: ds_lj2ibpti8tjg
+          containerPath: /inputs/generalqr-v1-taglbwe
+        - datasetId: ds_crvqcd2mpm2v
+          containerPath: /glove
+        - datasetId: ds_a80sdulzberi
+          containerPath: /config.json
+      requirements:
+        gpuCount: 1
