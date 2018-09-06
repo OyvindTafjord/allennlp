@@ -34,7 +34,7 @@ class Menu extends React.Component {
             </h1>
             <nav>
               <ul>
-                {buildLink("friction-q-parsing", "Friction Q Parsing")}
+                {buildLink("friction-q-parsing", "Friction Story QA")}
               </ul>
             </nav>
           </div>

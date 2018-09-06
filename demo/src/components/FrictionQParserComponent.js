@@ -75,16 +75,17 @@ const parserExamples = [
   }
 ];
 
-const title = "Friction Questions Semantic Parsing";
+const title = "Friction Story Question Answering";
 const description = (
   <span>
     <span>
-      Semantic parsing maps natural language to machine language.  This page demonstrates a semantic
-      parsing model on the FrictionQ dataset.
-      The model is a re-implementation of the parser in
+      This page demonstrates answering story questions about friction (FrictionQ dataset). It uses
+      a simple qualitative model of friction together with the FrictionSP+ semantic parsing model,
+      as described
+      in <i>Answering Story Questions about Qualitative Relationships</i> (EMNLP 2018 submission).
+      The model builds on work in
       the <a href="https://www.semanticscholar.org/paper/Neural-Semantic-Parsing-with-Type-Constraints-for-Krishnamurthy-Dasigi/8c6f58ed0ebf379858c0bbe02c53ee51b3eb398a">
-      EMNLP 2017 paper by Krishnamurthy, Dasigi and Gardner</a>, which achieved state-of-the-art results
-      on the WikiTables dataset at the time.
+      EMNLP 2017 paper by Krishnamurthy, Dasigi and Gardner</a>.
     </span>
   </span>
 );
@@ -160,7 +161,7 @@ class FrictionQInput extends React.Component {
 
 class FrictionQOutput extends React.Component {
   render() {
-    const { answer, logicalForm, actions, question_tokens, worldExtractions } = this.props;
+    const { answer, logicalForm, score, actions, question_tokens, worldExtractions, explanation } = this.props;
 
     return (
       <div className="model__content">
@@ -170,18 +171,34 @@ class FrictionQOutput extends React.Component {
         </div>
 
         <div className="form__field">
-          <label>Logical Form</label>
-          <div className="model__content__summary">{ logicalForm }</div>
+          <label>Explanation</label>
+          <div className="model__content__summary">
+            {explanation.map((entry) => (
+              <div><div className="friction__explanation__header">{ entry.header }:</div>
+                <ul className="friction__explanation__ul">{
+                  entry.content.map((c) => (<li className="friction__explanation__ul">{c}</li>))
+                }</ul>
+              </div>
+            ))}
+          </div>
         </div>
 
         <div className="form__field">
-          <label>Extracted world entities</label>
-          <div className="model__content__summary">world1: { worldExtractions.world1 },
-          world2: { worldExtractions.world2 }</div>
-        </div>
+          <Collapsible trigger="Model internals">
+            <div className="form__field">
+              <label>Logical Form</label>
+              <div className="model__content__summary">{ logicalForm }</div>
+            </div>
+            <div className="form__field">
+              <label>Score</label>
+              <div className="model__content__summary">{ score }</div>
+            </div>
 
-        <div className="form__field">
-          <Collapsible trigger="Model internals (beta)">
+            <div className="form__field">
+              <label>Extracted world entities</label>
+              <div className="model__content__summary">world1: { worldExtractions.world1 },
+                world2: { worldExtractions.world2 }</div>
+            </div>
             <Collapsible trigger="Predicted actions">
               {actions.map((action, action_index) => (
                 <Collapsible key={"action_" + action_index} trigger={action['predicted_action']}>
@@ -288,9 +305,11 @@ class _FrictionQParserComponent extends React.Component {
     const question = requestData && requestData.question;
     const answer = responseData && responseData.answer;
     const logicalForm = responseData && responseData.logical_form;
+    const score = responseData && responseData.score;
     const actions = responseData && responseData.predicted_actions;
     const question_tokens = responseData && responseData.question_tokens;
     const worldExtractions = responseData && responseData.world_extractions;
+    const explanation = responseData && responseData.explanation;
 
     return (
       <div className="pane model">
@@ -302,9 +321,11 @@ class _FrictionQParserComponent extends React.Component {
         <PaneRight outputState={this.state.outputState}>
           <FrictionQOutput answer={answer}
                             logicalForm={logicalForm}
+                            score={score}
                             actions={actions}
                             question_tokens={question_tokens}
                             worldExtractions={worldExtractions}
+                            explanation={explanation}
           />
         </PaneRight>
       </div>
