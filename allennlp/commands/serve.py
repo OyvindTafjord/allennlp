@@ -61,6 +61,28 @@ DEFAULT_MODELS = {
         )
 }
 
+DEFAULT_MODELS = {
+    'friction-q-parsing': DemoModel(
+        '/inputs/allennlp-models/friction_sp-try77y-model.tar.gz',  # pylint: disable=line-too-long
+        'friction-q-parser'
+    ),
+
+    'quarel-q-parsing': DemoModel(
+        '/inputs/allennlp-models/generalqr_sp-try16y-model.tar.gz',  # pylint: disable=line-too-long
+        'friction-q-parser'
+    ),
+
+    'friction-q-parsing-zero': DemoModel(
+        '/inputs/allennlp-models/friction_sp-try78x-model.tar.gz',  # pylint: disable=line-too-long
+        'friction-q-parser'
+    ),
+    'quarel-q-parsing-zero': DemoModel(
+        '/inputs/allennlp-models/generalqr_sp-try17x-model.tar.gz',  # pylint: disable=line-too-long
+        'friction-q-parser'
+    )
+}
+
+
 
 class Serve(Subcommand):
     def add_subparser(self, name: str, parser: argparse._SubParsersAction) -> argparse.ArgumentParser:

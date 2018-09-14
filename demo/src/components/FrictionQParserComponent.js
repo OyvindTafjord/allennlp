@@ -12,7 +12,8 @@ import ModelIntro from './ModelIntro'
  <McInput /> Component
  *******************************************************************************/
 
-const parserExamples = [
+var parserExamples = {};
+parserExamples["friction"] = [
   {
     question: "William is ice skating and notices that his ice skates glides quicker on wet ice as opposed to freshly fallen snow. The reason for this is because there is more friction on the (A) wet ice (B) freshly fallen snow"
   },
@@ -75,18 +76,71 @@ const parserExamples = [
   }
 ];
 
-const title = "Friction Story Question Answering";
-const description = (
+parserExamples["quarel"] = [
+  {
+    question: "Mary has always been weaker then Jimbo. Which person is able to throw a ball farther? (A) Jimbo (B) Mary"
+  },
+  {
+    question: "An empty pot generates less heat when Mary slides it the wood counter than it does when she slides it across a dish towel. This is because the _____ has less resistance. (A) towel (B) wood counter"
+  },
+  {
+    question: "A hockey puck slides a lot longer on a frozen lake then on a slushy lake. This means the surface of the _____ is smoother (A) frozen lake (B) slushy lake"
+  },
+  {
+    question: "The sun has much more mass than the earth so it has (A) weaker gravity (B) stronger gravity"
+  },
+  {
+    question: "Annabel and Lydia are riding their tricycles. Lydia is not as fast as Annabel is. Which one goes a shorter distance? (A) Annabel (B) Lydia"
+  },
+  {
+    question: "Connie's toy soldier slides a lot slower over the hallway floor then over the bedroom floor. She figures this makes the _____ much rougher (A) bedroom floor (B) hallway floor"
+  },
+  {
+    question: "Miller thinks that a light that he is approaching is very small, since he is quite far away. As he gets closer, he sees that it is a huge spotlight. The light is actually (A) bright (B) dim"
+  },
+  {
+    question: "Kory set up two slides in his backyard. One slide is metal and doesn't create much friction, while the other slide is wood and creates more friction. If Kory slides down both slides, which one will he go quicker on? (A) metal slide (B) wood slide"
+  },
+  {
+    question: "Michael and Daphne leave the train station at the same time and begin walking home along the same route. Michael decides to stop at a friend's house along the way, while Daphne continues walking. Who would end up going the smaller distance from the train station? (A) Michael (B) Daphne"
+  },
+  {
+    question: "The fastest land animal on earth, a cheetah was having a 100m race against a rabbit. Which one one the race? (A) the cheetah (B) the rabbit"
+  },
+  {
+    question: "Jim was playing with his new ball. He rolled it on the carpet in his living room and it didn't go very far. He decided to go outside and play. Jim rolled his ball on the concrete driveway and it went a much longer distance. He realized there was more resistance to the ball on (A) the carpet (B) the concrete."
+  },
+  {
+    question: "If Mona is doing pushups and Milo is reading a book, which person is sweating less? (A) Mona (B) Milo"
+  },
+  {
+    question: "James has rigorous fencing lessons in the morning, and in the evening goes to see a film at the cinema with his girlfriend. Where is he less likely to be sweaty? (A) While fencing (B) While watching a movie"
+  },
+  {
+    question: "Jose pushed his burrito cart on the bumpy sidewalk and went slow, while much faster on the street because it had (A) more resistance (B) less resistance"
+  },
+];
+
+var title = {};
+var description = {};
+
+title["friction"] = "Friction Story Question Answering";
+title["quarel"] = "Qualitative Relations Story Question Answering";
+description["friction"] = (
   <span>
-    <span>
-      This page demonstrates answering story questions about friction (FrictionQ dataset). It uses
-      a simple qualitative model of friction together with the FrictionSP+ semantic parsing model,
-      as described
-      in <i>Answering Story Questions about Qualitative Relationships</i> (EMNLP 2018 submission).
-      The model builds on work in
-      the <a href="https://www.semanticscholar.org/paper/Neural-Semantic-Parsing-with-Type-Constraints-for-Krishnamurthy-Dasigi/8c6f58ed0ebf379858c0bbe02c53ee51b3eb398a">
-      EMNLP 2017 paper by Krishnamurthy, Dasigi and Gardner</a>.
-    </span>
+    Answer story questions about friction (QuaRel<sup>F</sup> dataset). This uses the QuaSP+
+    semantic parser described in <i>QuaRel: A Dataset and Models for
+    Answering Questions about Qualitative Relationships</i> (AAAI 2018 submission). The examples
+    are from the validation set.
+  </span>
+);
+
+description["quarel"] = (
+  <span>
+    Answer story questions about qualitative relations (QuaRel dataset). This uses the QuaSP+
+    semantic parser described in <i>QuaRel: A Dataset and Models for
+    Answering Questions about Qualitative Relationships</i> (AAAI 2018 submission). The examples
+    are from the validation set.
   </span>
 );
 
@@ -97,7 +151,9 @@ class FrictionQInput extends React.Component {
 
     // If we're showing a permalinked result,
     // we'll get passed in a question.
-    const { question } = props;
+    const { question, mode } = props;
+
+    this.mode = mode;
 
     this.state = {
       questionValue: question || ""
@@ -109,7 +165,7 @@ class FrictionQInput extends React.Component {
   handleListChange(e) {
     if (e.target.value !== "") {
       this.setState({
-        questionValue: parserExamples[e.target.value].question,
+        questionValue: parserExamples[this.mode][e.target.value].question,
       });
     }
   }
@@ -131,11 +187,11 @@ class FrictionQInput extends React.Component {
 
     return (
       <div className="model__content">
-        <ModelIntro title={title} description={description} />
+        <ModelIntro title={title[this.mode]} description={description[this.mode]} />
         <div className="form__instructions"><span>Enter text or</span>
           <select disabled={outputState === "working"} onChange={this.handleListChange}>
             <option value="">Choose an example...</option>
-            {parserExamples.map((example, index) => {
+            {parserExamples[this.mode].map((example, index) => {
               return (
                 <option value={index} key={index}>{example.question.substring(0,60) + "..."}</option>
               );
@@ -254,7 +310,9 @@ class _FrictionQParserComponent extends React.Component {
   constructor(props) {
     super(props);
 
-    const { requestData, responseData } = props;
+    const { requestData, responseData, mode } = props;
+
+    this.mode = mode;
 
     this.state = {
       outputState: responseData ? "received" : "empty", // valid values: "working", "empty", "received", "error"
@@ -268,10 +326,12 @@ class _FrictionQParserComponent extends React.Component {
   runParser(event, inputs) {
     this.setState({outputState: "working"});
 
+    const urlStub = this.mode + "-q-parsing"
+
     var payload = {
       question: inputs.questionValue,
     };
-    fetch(`${API_ROOT}/predict/friction-q-parsing`, {
+    fetch(`${API_ROOT}/predict/${urlStub}`, {
       method: 'POST',
       headers: {
         'Accept': 'application/json',
@@ -284,7 +344,7 @@ class _FrictionQParserComponent extends React.Component {
       // If the response contains a `slug` for a permalink, we want to redirect
       // to the corresponding path using `history.push`.
       const { slug } = json;
-      const newPath = slug ? '/friction-q-parsing/' + slug : '/friction-q-parsing';
+      const newPath = slug ? `/${urlStub}/` + slug : `/${urlStub}`;
 
       // We'll pass the request and response data along as part of the location object
       // so that the `Demo` component can use them to re-render.
@@ -300,7 +360,7 @@ class _FrictionQParserComponent extends React.Component {
   }
 
   render() {
-    const { requestData, responseData } = this.props;
+    const { requestData, responseData, mode } = this.props;
 
     const question = requestData && requestData.question;
     const answer = responseData && responseData.answer;
@@ -315,8 +375,9 @@ class _FrictionQParserComponent extends React.Component {
       <div className="pane model">
         <PaneLeft>
           <FrictionQInput runParser={this.runParser}
-                           outputState={this.state.outputState}
-                           question={question}/>
+                          outputState={this.state.outputState}
+                          mode={mode}
+                          question={question}/>
         </PaneLeft>
         <PaneRight outputState={this.state.outputState}>
           <FrictionQOutput answer={answer}

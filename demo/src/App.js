@@ -8,6 +8,7 @@ import CorefComponent from './components/CorefComponent'
 import NamedEntityComponent from './components/NamedEntityComponent'
 import ConstituencyParserComponent from './components/ConstituencyParserComponent'
 import FrictionQParserComponent from './components/FrictionQParserComponent'
+import QuaSPZeroComponent from './components/QuaSPZeroComponent'
 import Menu from './components/Menu';
 import WaitingForPermalink from './components/WaitingForPermalink'
 
@@ -122,7 +123,16 @@ class Demo extends React.Component {
         return (<ConstituencyParserComponent requestData={requestData} responseData={responseData}/>)
       }
       else if (selectedModel === "friction-q-parsing") {
-        return (<FrictionQParserComponent requestData={requestData} responseData={responseData}/>)
+        return (<FrictionQParserComponent requestData={requestData} responseData={responseData} mode="friction"/>)
+      }
+      else if (selectedModel === "quarel-q-parsing") {
+        return (<FrictionQParserComponent requestData={requestData} responseData={responseData} mode="quarel"/>)
+      }
+      else if (selectedModel === "friction-q-parsing-zero") {
+        return (<QuaSPZeroComponent requestData={requestData} responseData={responseData} mode="friction"/>)
+      }
+      else if (selectedModel === "quarel-q-parsing-zero") {
+        return (<QuaSPZeroComponent requestData={requestData} responseData={responseData} mode="quarel"/>)
       }
     }
 
