@@ -26,10 +26,10 @@ from allennlp.data.dataset_readers.dataset_reader import DatasetReader
 from allennlp.data.dataset_readers.seq2seq import START_SYMBOL, END_SYMBOL
 from allennlp.semparse.contexts import TableQuestionKnowledgeGraph
 from allennlp.semparse.contexts.knowledge_graph import KnowledgeGraph
-from allennlp.semparse.friction_q_util import WorldExtractor, LEXICAL_CUES, words_from_entity_string
-from allennlp.semparse.friction_q_util import LIFE_CYCLE_ORGANISMS, LIFE_CYCLE_STAGES
+from allennlp.semparse.friction_q_util import WorldExtractor, WorldTaggerExtractor
+from allennlp.semparse.friction_q_util import words_from_entity_string
+from allennlp.semparse.friction_q_util import LEXICAL_CUES, LIFE_CYCLE_ORGANISMS, LIFE_CYCLE_STAGES
 from allennlp.semparse.worlds import FrictionWorld
-
 
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
 
@@ -75,6 +75,8 @@ class FrictionQDatasetReader(DatasetReader):
         If set, add a field for entity tags ("simple" = 1.0 value for world1 and world2,
         "simple_collapsed" = single 1.0 value for any world), tagging based on token matches
         with extracted entities
+    world_extractor_model : ``str`` (optional, default=None)
+        Reference to model file for world tagge rmodel
     lf_syntax: ``str``
         Which LF formalism to use, see friction types for details
 
@@ -98,10 +100,12 @@ class FrictionQDatasetReader(DatasetReader):
                  tagger_only: bool = False,
                  collapse_tags: Optional[List[str]] = None,
                  denotation_only: bool = False,
+                 world_extractor_model: Optional[str] = None,
                  skip_attributes_regex: Optional[str] = None,
                  entity_tag_mode: Optional[str] = None,
                  entity_types: Optional[List[str]] = None,
                  lexical_cues: List[str] = None,
+
                  tokenizer: Tokenizer = None,
                  question_token_indexers: Dict[str, TokenIndexer] = None) -> None:
         super().__init__(lazy=lazy)
@@ -179,7 +183,7 @@ class FrictionQDatasetReader(DatasetReader):
                     if (self._skip_attributes_regex is not None and
                             self._skip_attributes_regex.search(k)):
                         continue
-                    entity_strings = [words_from_entity_string(k.lower())]
+                    entity_strings = [words_from_entity_string(k).lower()]
                     if self._lexical_cues is not None:
                         for key in self._lexical_cues:
                             if k in LEXICAL_CUES[key]:
@@ -211,7 +215,14 @@ class FrictionQDatasetReader(DatasetReader):
         if self._replace_world_entities:
             self._stemmer = PorterStemmer().stemmer
 
-        if self._extract_world_entities or self._single_lf_extractor_aligned:
+        self._world_extractor_model = world_extractor_model
+        if self._world_extractor_model is not None:
+            logger.info("LOADING TAGGER MODEL...")
+            self._world_tagger_extractor = WorldTaggerExtractor(world_extractor_model)
+            logger.info("LOADING TAGGER MODEL DONE")
+
+        if (self._extract_world_entities and self._world_extractor_model is None) or \
+                self._single_lf_extractor_aligned:
             self._world_extractor = WorldExtractor()
 
 
@@ -237,14 +248,17 @@ class FrictionQDatasetReader(DatasetReader):
                     lfs = question_data_in['logical_forms']
                     lfs_new = [attr_regex.sub(r"(a:\1 \2", lf) for lf in lfs]
                     question_data_in['logical_forms'] = lfs_new
-                world_flip_lf = False
+                world_flip_lf = None
                 if self._extract_world_entities:
                     extractions, world_flip_lf = self.get_world_extractions(question_data_in)
                     if extractions is None:
                         continue
                     question_data_in['world_extractions'] = extractions
-                elif 'world_extractions' in question_data_in and self._single_lf_extractor_aligned:
-                    world_flip_lf = self._check_world_flip(question_data_in)
+                if world_flip_lf is None:
+                    if 'world_extractions' in question_data_in and self._single_lf_extractor_aligned:
+                        world_flip_lf = self._check_world_flip(question_data_in)
+                    else:
+                        world_flip_lf = False
 
                 if self._entity_types is not None:
                     question_data_in['entity_literals'] = \
@@ -321,7 +335,10 @@ class FrictionQDatasetReader(DatasetReader):
                          additional_metadata: Dict[str, Any] = None,
                          world_extractions: Dict[str, str] = None,
                          entity_literals: Dict[str, Union[str, List[str]]] = None,
-                         tokenized_question: List[Token] = None, debug=None) -> Instance:
+                         tokenized_question: List[Token] = None,
+                         debug=None,
+                         qr_spec_override=None,
+                         dynamic_entities_override=None) -> Instance:
         """
 
         """
@@ -338,6 +355,16 @@ class FrictionQDatasetReader(DatasetReader):
                                              neighbors=neighbors,
                                              entity_text=world_extractions)
             world = FrictionWorld(knowledge_graph, self._lf_syntax)
+        elif qr_spec_override is not None or dynamic_entities_override is not None:
+            # Dynamically specify theory and/or entities
+            dynamic_entities = dynamic_entities_override or self._dynamic_entities
+            neighbors = {key: [] for key in dynamic_entities.keys()}
+            knowledge_graph = KnowledgeGraph(entities=set(dynamic_entities.keys()),
+                                             neighbors=neighbors,
+                                             entity_text=dynamic_entities)
+            world = FrictionWorld(knowledge_graph,
+                                  self._lf_syntax,
+                                  qr_coeff_sets=qr_spec_override)
         else:
             knowledge_graph = self._knowledge_graph
             world = self._world
@@ -366,6 +393,12 @@ class FrictionQDatasetReader(DatasetReader):
         if self._denotation_only:
             denotation_field = LabelField(additional_metadata['answer_index'], skip_indexing=True)
             fields['denotation_target'] = denotation_field
+
+
+        if self._tagger_only and entity_literals is None:
+            fields = {'tokens': question_field}
+            fields['metadata'] = MetadataField(additional_metadata)
+            return Instance(fields)
 
         if self._entity_types is not None and entity_literals is not None:
             entity_tags = self._get_entity_tags_full(table_field, entity_literals, tokenized_question)
@@ -496,6 +529,11 @@ class FrictionQDatasetReader(DatasetReader):
 
 
     def get_world_extractions(self, question_data):
+        # Override when using tagger extractor
+        if self._world_extractor_model is not None:
+            question = self._fix_question(question_data['question'])
+            extractions = self._world_tagger_extractor.get_world_entities(question)
+            return extractions, None
         extracted = self._world_extractor.extract(question_data['question'])
         extractions = {}
         flip = False
@@ -717,6 +755,7 @@ class FrictionQDatasetReader(DatasetReader):
         lf_syntax = params.pop('lf_syntax', None)
         lexical_cues = params.pop('lexical_cues', None)
         tokenizer = Tokenizer.from_params(params.pop('tokenizer', {}))
+        world_extractor_model = params.pop('world_extractor_model', None)
         question_token_indexers = TokenIndexer.dict_from_params(params.pop('question_token_indexers', {}))
         params.assert_empty(cls.__name__)
         return FrictionQDatasetReader(lazy=lazy,
@@ -742,4 +781,5 @@ class FrictionQDatasetReader(DatasetReader):
                                       entity_types=entity_types,
                                       tokenizer=tokenizer,
                                       lexical_cues=lexical_cues,
+                                      world_extractor_model=world_extractor_model,
                                       question_token_indexers=question_token_indexers)

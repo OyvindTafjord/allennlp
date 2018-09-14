@@ -28,7 +28,10 @@ class FrictionWorld(World):
     """
     # pylint: disable=too-many-public-methods
 
-    def __init__(self, table_graph: TableQuestionKnowledgeGraph, syntax: str = "with_type_2") -> None:
+    def __init__(self,
+                 table_graph: TableQuestionKnowledgeGraph,
+                 syntax: str = "with_type_2",
+                 qr_coeff_sets = None) -> None:
         if syntax is None: syntax = "with_type_2"
         self._syntax = syntax
         self.types = FrictionTypeDeclaration(syntax)
@@ -53,12 +56,13 @@ class FrictionWorld(World):
 
         self._entity_set = set(table_graph.entities)
 
+        self.qr_coeff_sets = qr_coeff_sets or self.qr_coeff_sets_default
+
     def is_table_entity(self, entity_name: str) -> bool:
         """
         Returns ``True`` if the given entity is one of the entities in the table.
         """
         return entity_name in self._entity_set
-
 
     def entity_index(self, entity) -> int:
         entity_type = entity[0]
@@ -114,7 +118,8 @@ class FrictionWorld(World):
 
     # Simple table for how attributes relates to each other
 
-    qr_coeff_sets = [{"friction": 1, "speed": -1, "smoothness": -1, "distance": -1, "heat": 1},
+    qr_coeff_sets_default = [
+                     {"friction": 1, "speed": -1, "smoothness": -1, "distance": -1, "heat": 1},
                      {"speed": 1, "time": -1},
                      {"speed": 1, "distance": 1},
                      {"time": 1, "distance": 1},
@@ -134,38 +139,35 @@ class FrictionWorld(World):
         'lower': -1
     }
 
-    @staticmethod
-    def get_qr_coeff(attr1, attr2):
-        for d in FrictionWorld.qr_coeff_sets:
+    def get_qr_coeff(self, attr1, attr2):
+        for d in self.qr_coeff_sets:
             if attr1 in d and attr2 in d:
                 return d[attr1] * d[attr2]
         return 0
 
-    @staticmethod
-    def check_compatible(setup: List, answer: List) -> bool:
+    def check_compatible(self, setup: List, answer: List) -> bool:
         attributes = {setup[0], answer[0]}
         qr_coeff = None
-        for qr_coeff_set in FrictionWorld.qr_coeff_sets:
+        for qr_coeff_set in self.qr_coeff_sets:
             if len(attributes - qr_coeff_set.keys()) == 0:
                 qr_coeff = qr_coeff_set
         if qr_coeff is None:
-            return -2  # No compatible attribute sets found
+            return False  # No compatible attribute sets found
 
         attribute_dir = qr_coeff[setup[0]] * qr_coeff[answer[0]]
-        change_same = 1 if FrictionWorld.qr_size[setup[1]] == FrictionWorld.qr_size[answer[1]] else -1
+        change_same = 1 if self.qr_size[setup[1]] == self.qr_size[answer[1]] else -1
         world_same = 1 if setup[2] == answer[2] else -1
         return attribute_dir * change_same * world_same == 1
 
-    @staticmethod
-    def exec_infer(setup, *answers):
+    def exec_infer(self, setup, *answers):
         answer_index = -1
         if len(answers) == 1:
-            if FrictionWorld.check_compatible(setup, answers[0]):
+            if self.check_compatible(setup, answers[0]):
                 return 1
             else:
                 return 0
         for index, answer in enumerate(answers):
-            if FrictionWorld.check_compatible(setup, answer):
+            if self.check_compatible(setup, answer):
                 if answer_index > -1:
                     # Found two valid answers
                     answer_index = -2
@@ -173,8 +175,7 @@ class FrictionWorld(World):
                     answer_index = index
         return answer_index
 
-    @staticmethod
-    def exec_and(expr):
+    def exec_and(self, expr):
         if len(expr) == 0 or expr[0] != 'and':
             return expr
         args = expr[1:]
@@ -183,13 +184,12 @@ class FrictionWorld(World):
         if len(args) > 2:
             # More than 2 arguments not allowed by current grammar
             return None
-        if FrictionWorld.check_compatible(args[0], args[1]):
+        if self.check_compatible(args[0], args[1]):
             # Check that arguments are compatible, then fine to keep just one
             return args[0]
         return None
 
-    @staticmethod
-    def execute(lf_raw: str) -> int:
+    def execute(self, lf_raw: str) -> int:
         """
         Very basic model for executing friction logical forms. For now returns answer index (or
         -1 if no answer can be concluded)
@@ -200,8 +200,8 @@ class FrictionWorld(World):
         if len(parse) < 1 and len(parse[0]) < 2:
             return -1
         if parse[0][0] == 'infer':
-            args = [FrictionWorld.exec_and(arg) for arg in parse[0][1:]]
+            args = [self.exec_and(arg) for arg in parse[0][1:]]
             if None in args:
                 return -1
-            return FrictionWorld.exec_infer(*args)
+            return self.exec_infer(*args)
         return -1

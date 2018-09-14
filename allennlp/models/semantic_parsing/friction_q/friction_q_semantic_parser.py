@@ -600,7 +600,7 @@ class FrictionQSemanticParser(Model):
                         self._has_logical_form(0.0)
                         logical_form = 'Error producing logical form'
                     denotation_accuracy = 0
-                    predicted_answer_index = FrictionWorld.execute(logical_form)
+                    predicted_answer_index = world[i].execute(logical_form)
                     if metadata is not None and 'question_tokens' in metadata[i]:
                         outputs['question_tokens'].append(metadata[i]['question_tokens'])
                     if metadata is not None and 'world_extractions' in metadata[i]:

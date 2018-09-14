@@ -1,14 +1,16 @@
-# Code ported from Peter Clark's Lisp heuristics for "world extraction"
-
-# Light on comments and typing
+# Miscellaneous helper functions for friction parser.
+# Lots of prototype code
 
 from collections import defaultdict
 import re
 import spacy
 
 from allennlp.data.tokenizers.word_stemmer import PorterStemmer
+#from allennlp.models.archival import load_archive
 from allennlp.semparse import util as semparse_util
 from allennlp.semparse.worlds import FrictionWorld
+#from allennlp.service.predictors import Predictor
+from nltk.metrics.distance import edit_distance
 
 
 LEXICAL_CUES = {}
@@ -141,7 +143,7 @@ def split_question(question):
 
 
 def nl_triple(triple, nl_world):
-    return f"{triple[0].capitalize()} is {triple[1]} for {nl_world[triple[2]]}"
+    return f"{nl_attr(triple[0]).capitalize()} is {triple[1]} for {nl_world[triple[2]]}"
 
 
 def nl_arg(arg, nl_world):
@@ -151,22 +153,41 @@ def nl_arg(arg, nl_world):
         return [nl_triple(arg, nl_world)]
 
 
+def nl_attr(attr):
+    return words_from_entity_string(strip_entity_type(attr)).lower()
+
+
 def nl_dir(sign):
     if sign == 1:
         return "higher"
     else:
         return "lower"
 
+def nl_world_string(world):
+    return f'"{str_join(world, "|")}"'
 
-def get_explanation(logical_form, world_extractions, answer_index):
+
+def strip_entity_type(entity):
+    return re.sub(r'^[a-z]:', '', entity)
+
+
+def str_join(string_or_list, joiner, prefixes="", postfixes=""):
+    res = string_or_list
+    if not isinstance(res, list):
+        res = [res]
+    res = [f'{prefixes}{x}{postfixes}' for x in res]
+    return joiner.join(res)
+
+
+def get_explanation(logical_form, world_extractions, answer_index, world):
     """
     Create explanation (as a list of header/content entries) for an answer
     """
     output = []
     nl_world = {}
-    if world_extractions['world1'] != "N/A":
-        nl_world['world1'] = f'''"{world_extractions['world1']}"'''
-        nl_world['world2'] = f'''"{world_extractions['world2']}"'''
+    if world_extractions['world1'] != "N/A" and world_extractions['world1'] != ["N/A"]:
+        nl_world['world1'] = nl_world_string(world_extractions['world1'])
+        nl_world['world2'] = nl_world_string(world_extractions['world2'])
         output.append({
             "header": "Identified two worlds",
             "content": [f'''world1 = {nl_world['world1']}''',
@@ -193,16 +214,16 @@ def get_explanation(logical_form, world_extractions, answer_index):
     if setup[0] == 'and':
         setup_core = setup[1]
     s_attr = setup_core[0]
-    s_dir = FrictionWorld.qr_size[setup_core[1]]
+    s_dir = world.qr_size[setup_core[1]]
     s_world = nl_world[setup_core[2]]
     a_attr = answers[answer_index][0]
-    qr_dir = FrictionWorld.get_qr_coeff(s_attr, a_attr)
+    qr_dir = world.get_qr_coeff(strip_entity_type(s_attr), strip_entity_type(a_attr))
     a_dir = s_dir * qr_dir
     a_world = nl_world[answers[answer_index][2]]
 
-    content = [f'''When {s_attr} is {nl_dir(s_dir)} then {a_attr} is {nl_dir(a_dir)} (for {s_world})''']
+    content = [f'''When {nl_attr(s_attr)} is {nl_dir(s_dir)} then {nl_attr(a_attr)} is {nl_dir(a_dir)} (for {s_world})''']
     if a_world != s_world:
-        content.append(f'''Therefore {a_attr} is {nl_dir(-a_dir)} for {a_world}''')
+        content.append(f'''Therefore {nl_attr(a_attr)} is {nl_dir(-a_dir)} for {a_world}''')
     content.append(f"Therefore {chr(65+answer_index)} is the correct answer")
 
     output.append({
@@ -213,7 +234,166 @@ def get_explanation(logical_form, world_extractions, answer_index):
     return output
 
 
-class WorldExtractor():
+## Code for processing QR specs to/from string format
+
+re_group = re.compile(r"\[([^[\]].*?)\]")
+re_sep = re.compile(r" *, *")
+re_initletter = re.compile(r" (.)")
+
+
+def to_camel(string):
+    return re_initletter.sub(lambda x: x.group(1).upper(), string)
+
+
+def from_qr_spec_string(qr_spec):
+    res = []
+    groups = re_group.findall(qr_spec)
+    for group in groups:
+        group_split = re_sep.split(group)
+        group_dict = {}
+        for attribute in group_split:
+            sign = 1
+            if attribute[0] == "-":
+                sign = -1
+                attribute = attribute[1:]
+            elif attribute[0] == "+":
+                attribute = attribute[1:]
+            attribute = to_camel(attribute)
+            group_dict[attribute] = sign
+        res.append(group_dict)
+    return res
+
+
+def to_qr_spec_string(qr_coeff_sets):
+    res = []
+    signs = {1:"+", -1:"-"}
+    for qr_set in qr_coeff_sets:
+        first = True
+        group_list = []
+        for attr, sign in qr_set.items():
+            signed_attr = signs[sign] + attr
+            if first:
+                first = False
+                if sign == 1:
+                    signed_attr = attr
+            group_list.append(signed_attr)
+        res.append(f'[{", ".join(group_list)}]')
+    return "\n".join(res)
+
+
+def from_entity_cues_string(cues_string):
+    lines = cues_string.split("\n")
+    res = {}
+    for line in lines:
+        line_split = line.split(":")
+        head = line_split[0].strip()
+        cues = []
+        if len(line_split) > 1:
+            cues = re_sep.split(line_split[1])
+        res[head] = cues
+    return res
+
+
+def from_bio(tags, target):
+    res = []
+    current = None
+    for index, tag in enumerate(tags):
+        if tag == "B-" + target:
+            if current is not None:
+                res.append((current, index))
+            current = index
+        elif tag == "I-" + target:
+            if current is None:
+                current = index  # Should not happen
+        else:
+            if current is not None:
+                res.append((current, index))
+            current = None
+    if current is not None:
+        res.append((current, len(tags)))
+    return res
+
+def delete_duplicates(e):
+    seen = set()
+    res = []
+    for e1 in e:
+        if not e1 in seen:
+            seen.add(e1)
+            res.append(e1)
+    return res
+
+def group_worlds(tags, tokens):
+    spans = from_bio(tags, 'world')
+    with_strings = [(" ".join(tokens[i:j]), i, j) for i,j in spans]
+    with_strings.sort(key=lambda x:len(x[0]), reverse=True)
+    substring_groups = []
+    ambiguous = []
+    for string,i,j in with_strings:
+        found = None
+        for group_index, group in enumerate(substring_groups):
+            for string_g, _, _ in group:
+                if string in string_g:
+                    if found is None:
+                        found = group_index
+                    elif found != group_index:
+                        found = -1 # Found multiple times
+        if found is None:
+            substring_groups.append([(string, i, j)])
+        elif found >= 0:
+            substring_groups[found].append((string, i, j))
+        else:
+            ambiguous.append((string, i, j))
+    nofit = []
+    if len(substring_groups) > 2:
+        substring_groups.sort(key=len, reverse=True)
+        for extra in substring_groups[2:]:
+            best_distance = 999
+            best_index = None
+            string = extra[0][0]  # Use the longest string
+            for index, group in enumerate(substring_groups[:2]):
+                for string_g, _, _ in group:
+                    distance = edit_distance(string_g, string)
+                    if distance < best_distance:
+                        best_distance = distance
+                        best_index = index
+            # Heuristics for "close enough"
+            if best_index is not None and best_distance < len(string) - 1:
+                substring_groups[best_index] += extra
+            else:
+                nofit.append(extra)
+    else:
+        substring_groups += [[("N/A", 999, 999)]] * 2   # padding
+    substring_groups = substring_groups[:2]
+    # Sort by first occurrence
+    substring_groups.sort(key = lambda x:min([y[1] for y in x]))
+    world_dict = {}
+    for index, group in enumerate(substring_groups):
+        world_strings = delete_duplicates([x[0] for x in group])
+        world_dict['world'+str(index+1)] = world_strings
+
+    return world_dict
+
+
+class WorldTaggerExtractor:
+
+    def __init__(self, tagger_archive):
+        from allennlp.models.archival import load_archive
+        from allennlp.service.predictors import Predictor
+        self._tagger_archive = load_archive(tagger_archive)
+        self._tagger = Predictor.from_archive(self._tagger_archive)
+
+    def get_world_entities(self, question, tokenized_question=None):
+        tokenized_question = tokenized_question or self._tagger._dataset_reader._tokenizer.tokenize(question.lower())
+        instance = self._tagger._dataset_reader.text_to_instance(question,
+                                                                 tokenized_question=tokenized_question)
+        output = self._tagger._model.forward_on_instance(instance)
+        tokens_text = [t.text for t in tokenized_question]
+        res = group_worlds(output['tags'], tokens_text)
+        return res
+
+
+# Code ported from Peter Clark's Lisp heuristics for "world extraction"
+class WorldExtractor:
     def __init__(self):
         self._stemmer = PorterStemmer().stemmer
         self._spacy_model = spacy.load('en_core_web_sm')
