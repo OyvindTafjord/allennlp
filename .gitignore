@@ -12,7 +12,3 @@ allennlp.egg-info/
 build/
 dist/
 .mypy_cache
-
-allennlp/semparse/type_declarations/copy_friction_type_declaration.py
-
-allennlp/models/semantic_parsing/wikitables/wikitables_semantic_parser_old.py
