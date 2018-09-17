@@ -1,6 +1,6 @@
 import os
 from subprocess import run
-from typing import Tuple
+from typing import Dict, Tuple, Any
 
 from overrides import overrides
 
@@ -18,6 +18,23 @@ class FrictionQParserPredictor(Predictor):
     """
     Wrapper for the friction_q_semantic_parser model.
     """
+
+    def __init__(self, *args):
+        super().__init__(*args)
+        self._life_cycle_executor = None
+
+    def _life_cycle_execute(self, question: str, prediction: Dict[str, Any]):
+        if self._life_cycle_executor is None:
+            from allennlp.semparse.executors.life_cycle.life_cycle_executor import LifeCycleExecutor
+            self._life_cycle_executor = LifeCycleExecutor()
+        output =  self._life_cycle_executor.execute(question, prediction)
+        prediction['logical_form_orig'] = prediction.get('logical_form', "N/A")
+        prediction['answer_index'] = output.get('answer_index', -1)
+        prediction['logical_form'] = output.get('logical_form', "N/A")
+        prediction['score_orig'] = prediction.get('score', -1)
+        prediction['score'] = max(output.get('confidences', [-1]))
+        return prediction
+
 
     @overrides
     def _json_to_instance(self, json_dict: JsonDict) -> Tuple[Instance, JsonDict]:
@@ -82,6 +99,11 @@ class FrictionQParserPredictor(Predictor):
         instance, return_dict = self._json_to_instance(inputs)
         world = instance.fields['world'].metadata
         outputs = self._model.forward_on_instance(instance)
+
+        is_life_cycle = "life_cycle" in self._dataset_reader._lf_syntax
+        if is_life_cycle:
+            outputs = self._life_cycle_execute(return_dict['question'], outputs)
+
         answer_index = outputs['answer_index']
         if answer_index == 0:
             answer = "A"
@@ -95,10 +117,13 @@ class FrictionQParserPredictor(Predictor):
 
         explanation = None
         if answer != "None":
-            explanation = get_explanation(return_dict['logical_form'],
+            if not is_life_cycle:
+                explanation = get_explanation(return_dict['logical_form'],
                                   return_dict['world_extractions'],
                                   answer_index,
                                   world)
+            else:
+                explanation = [{"header": "Full logical form:", "content": [outputs['logical_form']]}]
         else:
             explanation =[{"header": "No consistent interpretation found!", "content": []}]
 

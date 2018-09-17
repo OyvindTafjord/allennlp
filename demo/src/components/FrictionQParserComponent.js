@@ -121,11 +121,67 @@ parserExamples["quarel"] = [
   },
 ];
 
+parserExamples["lifecycle"] = [
+  {
+    question: "Which thing is going to happen in the life cycle of a oviaporous snake? (A) adult and young (B) young and tadpole"
+  },
+  {
+    question: "What are two species of lizard that give birth to live young? (A) Solomon Island and blue-tongued skink (B) iguanas and geckos"
+  },
+  {
+    question: "What happens in the life cycle of a lizard? (A) eggs and juvenile lizards (B) eggs and nymph"
+  },
+  {
+    question: "How do spiderlings leave their nests? (A) Ballooning (B) Swimming"
+  },
+  {
+    question: "The growth process for a cricket includes which step? (A) egg (B) tadpole"
+  },
+  {
+    question: "What do spiderlings leave after their first molt (A) tree (B) egg sac"
+  },
+  {
+    question: "How often does a mature snake shed its skin? (A) 8 times (B) 2 times"
+  },
+  {
+    question: "If lizard has moved past the eggs stage but has not reached the adult lizards stage where it might be? (A) adult lizards (B) juvenile lizards"
+  },
+  {
+    question: "During what stage will spiders lay eggs? (A) spiderling (B) adult"
+  },
+  {
+    question: "Which happens at stage 2 in a lizard's life cycle? (A) eggs (B) juvenile lizards"
+  },
+  {
+    question: "As a spider grows, it goes through several stages. Which of these is one of them? (A) adult and tadpole (B) egg and adult"
+  },
+  {
+    question: "During what phase do spiders lay eggs? (A) Spiderling (B) Adult"
+  },
+  {
+    question: "As an oviaporous snake grows, it goes through several stages. Which of these is one of them? (A) adult (B) tadpole"
+  },
+  {
+    question: "An oviaporous snake goes through 3 stages as it grows. What is stage #3? (A) young (B) adult"
+  },
+  {
+    question: "Crickets can become which of these? (A) nymph and egg (B) egg and tadpole"
+  },
+  {
+    question: "The development of a spider includes which of these steps? (A) egg and nymph (B) spiderling and egg"
+  },
+  {
+    question: "When it comes to crickets what is the first stage? (A) adult (B) egg"
+  },
+  {
+    question: "When a juvenile snake becomes an adult, what will it do less of? (A) twitching their muscles (B) skin shedding"
+  }
+];
+
 var title = {};
 var description = {};
 
 title["friction"] = "Friction Story Question Answering";
-title["quarel"] = "Qualitative Relations Story Question Answering";
 description["friction"] = (
   <span>
     Answer story questions about friction (QuaRel<sup>F</sup> dataset). This uses the QuaSP+
@@ -135,6 +191,7 @@ description["friction"] = (
   </span>
 );
 
+title["quarel"] = "Qualitative Relations Story Question Answering";
 description["quarel"] = (
   <span>
     Answer story questions about qualitative relations (QuaRel dataset). This uses the QuaSP+
@@ -143,6 +200,21 @@ description["quarel"] = (
     are from the validation set.
   </span>
 );
+
+title["lifecycle"] = "Life Cycle Question Answering";
+description["lifecycle"] = (
+  <span>
+    Answer questions about life cycles. This uses the system
+    described in <i>Declarative Question Answering over Knowledge Bases containing Natural
+    Language Text with Answer Set Programming</i> (AAAI 2018 submission). The examples
+    are from the validation set, using life cycle descriptions not seen during training (text split).
+  </span>
+);
+
+var sampleQ = {};
+sampleQ['friction'] = "E.g. \"William is ice skating and notices that his ice skates glides quicker on wet ice as opposed to freshly fallen snow. The reason for this is because there is more friction on the (A) wet ice (B) freshly fallen snow\"";
+sampleQ['quarel'] = "E.g. \"William is ice skating and notices that his ice skates glides quicker on wet ice as opposed to freshly fallen snow. The reason for this is because there is more friction on the (A) wet ice (B) freshly fallen snow\"";
+sampleQ['lifecycle'] = "E.g. \"The growth process for a cricket includes which step? (A) egg (B) tadpole\"";
 
 
 class FrictionQInput extends React.Component {
@@ -200,7 +272,9 @@ class FrictionQInput extends React.Component {
         </div>
         <div className="form__field">
           <label htmlFor="#input--mc-question">Question</label>
-          <textarea onChange={this.handleQuestionChange} id="input--mc-question" type="text" required="true" value={questionValue} placeholder="E.g. &quot;William is ice skating and notices that his ice skates glides quicker on wet ice as opposed to freshly fallen snow. The reason for this is because there is more friction on the (A) wet ice (B) freshly fallen snow&quot;" disabled={outputState === "working"} />
+          <textarea onChange={this.handleQuestionChange} id="input--mc-question" type="text" required="true"
+                    value={questionValue}
+                    placeholder={sampleQ[this.mode]} disabled={outputState === "working"} />
         </div>
         <div className="form__field form__field--btn">
           <Button enabled={outputState !== "working"} runModel={runParser} inputs={parserInputs} />

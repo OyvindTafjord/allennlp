@@ -16,7 +16,7 @@ import WaitingForPermalink from './components/WaitingForPermalink'
   <App /> Container
 *******************************************************************************/
 
-const DEFAULT_PATH = "/friction-q-parsing"
+const DEFAULT_PATH = "/quarel-q-parsing"
 
 // The App is just a react-router wrapped around the Demo component.
 const App = () => (
@@ -128,13 +128,16 @@ class Demo extends React.Component {
       else if (selectedModel === "quarel-q-parsing") {
         return (<FrictionQParserComponent requestData={requestData} responseData={responseData} mode="quarel"/>)
       }
+      else if (selectedModel === "lifecycle-q-parsing") {
+        return (<FrictionQParserComponent requestData={requestData} responseData={responseData} mode="lifecycle"/>)
+      }
       else if (selectedModel === "friction-q-parsing-zero") {
         return (<QuaSPZeroComponent requestData={requestData} responseData={responseData} mode="friction"/>)
       }
       else if (selectedModel === "quarel-q-parsing-zero") {
         return (<QuaSPZeroComponent requestData={requestData} responseData={responseData} mode="quarel"/>)
       }
-    }
+    };
 
     return (
       <div className="pane-container">

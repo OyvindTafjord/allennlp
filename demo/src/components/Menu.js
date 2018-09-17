@@ -45,6 +45,9 @@ class Menu extends React.Component {
               <ul>
                 {buildLink("friction-q-parsing-zero", "Friction QA (Zero shot)")}
               </ul>
+              <ul>
+                {buildLink("lifecycle-q-parsing", "Life Cycle QA")}
+              </ul>
             </nav>
           </div>
         </div>

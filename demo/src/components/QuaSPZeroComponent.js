@@ -212,9 +212,9 @@ function appendDefault(value, deflt) {
   if (value == null) {
     return deflt
   }
-  if (value.slice(-1) == "*") {
+  if (value.slice(-1) === "*") {
     return value.slice(0,-1)
-  } else if (value == "") {
+  } else if (value === "") {
     return deflt
   } else {
     return value + "\n" + deflt
@@ -247,7 +247,6 @@ class FrictionQInput extends React.Component {
 
   handleListChange(e) {
     if (e.target.value !== "") {
-      var qrsp
       this.setState({
         questionValue: parserExamples[this.mode][e.target.value].question,
         qrspecValue: appendDefault(parserExamples[this.mode][e.target.value].qrspec, qrspecDefault[this.mode]),

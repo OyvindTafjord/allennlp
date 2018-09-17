@@ -264,6 +264,7 @@ def make_app(build_dir: str = None, demo_db: Optional[DemoDatabase] = None) -> F
     @app.route('/quarel-q-parsing')
     @app.route('/friction-q-parsing-zero')
     @app.route('/quarel-q-parsing-zero')
+    @app.route('/lifecycle-q-parsing')
     @app.route('/named-entity-recognition')
     @app.route('/semantic-role-labeling/<permalink>')
     @app.route('/constituency-parsing/<permalink>')
@@ -274,6 +275,7 @@ def make_app(build_dir: str = None, demo_db: Optional[DemoDatabase] = None) -> F
     @app.route('/quarel-q-parsing/<permalink>')
     @app.route('/friction-q-parsing-zero/<permalink>')
     @app.route('/quarel-q-parsing-zero/<permalink>')
+    @app.route('/lifecycle-q-parsing/<permalink>')
     @app.route('/named-entity-recognition/<permalink>')
     def return_page(permalink: str = None) -> Response:  # pylint: disable=unused-argument, unused-variable
         """return the page"""

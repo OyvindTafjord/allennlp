@@ -79,6 +79,10 @@ DEFAULT_MODELS = {
     'quarel-q-parsing-zero': DemoModel(
         '/inputs/allennlp-models/generalqr_sp-try17x-model.tar.gz',  # pylint: disable=line-too-long
         'friction-q-parser'
+    ),
+    'lifecycle-q-parsing': DemoModel(
+        '/inputs/allennlp-models/lcq_sp-try4x-model.tar.gz',  # pylint: disable=line-too-long
+        'friction-q-parser'
     )
 }
 
