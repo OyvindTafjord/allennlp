@@ -34,6 +34,7 @@ from allennlp.data.dataset_readers.semantic_parsing import (
 from allennlp.data.dataset_readers.semantic_parsing.quarel import QuarelDatasetReader
 from allennlp.data.dataset_readers.simple_language_modeling import SimpleLanguageModelingDatasetReader
 from allennlp.data.dataset_readers.bert_mc_qa import BertMCQAReader
+from allennlp.data.dataset_readers.kermit_mc_qa import KermitMCQAReader
 from allennlp.data.dataset_readers.qr_tagger import QRTaggerReader
 from allennlp.data.dataset_readers.wordnet_links import WordnetLinksReader
 from allennlp.data.dataset_readers.babi import BabiReader
