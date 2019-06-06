@@ -184,7 +184,7 @@ class KermitMCQAReader(DatasetReader):
                     answer_id = choice_label_to_id[item_json["answerKey"]]
                     # Pad choices with empty strings if not right number
                     if len(choice_text_list) != self._num_choices:
-                        choice_text_list = (choice_text_list + self._num_choices * [''])[:self._num_choices]
+                        choice_text_list = (choice_text_list + self._num_choices * ['.'])[:self._num_choices]
                         choice_context_list = (choice_context_list + self._num_choices * [None])[:self._num_choices]
                         if answer_id >= self._num_choices:
                             logging.warning(f"Skipping question with more than {self._num_choices} answers: {item_json}")
