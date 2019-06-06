@@ -35,7 +35,7 @@ def main(config, replace, outdir, shfile, index) -> None:
         new_file = os.path.join(outdir, f'{config_split[0]}-multi{index}{config_split[1]}')
         new_dir = os.path.join(outdir, f'multi{index}')
         convert_config(old_config, new_file, new_params)
-        out_content.append(f'bin/allennlp train -s {new_dir} {new_file}')
+        out_content.append(f'allennlp/run.py train -s {new_dir} {new_file}')
         index += 1
     open(shfile, "w").write("\n".join(out_content))
 
@@ -47,6 +47,6 @@ if __name__ == "__main__":
     parser.add_argument('--replace', type=str, required=True, help='Replacement jsonl file.')
     parser.add_argument('--outdir', type=str, required=True, help='Output root directory')
     parser.add_argument('--shfile', type=str, default="run-many-train.sh", help="Generated shell file.")
-    parser.add_argument('--index', type=str, default=0, help="Start index for generated variations.")
+    parser.add_argument('--index', type=int, default=0, help="Start index for generated variations.")
     args = parser.parse_args()
     main(args.config, args.replace, args.outdir, args.shfile, args.index)

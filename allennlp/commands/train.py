@@ -276,7 +276,7 @@ def train_model(params: Params,
         metadata_fields = evaluate_custom_params.get('metadata_fields')
         if isinstance(metadata_fields, list):
             metadata_fields = ",".join(metadata_fields)
-        output_file = os.path.join(serialization_dir, "eval_validation.json.")
+        output_file = os.path.join(serialization_dir, "eval_validation.jsonl")
         validation_metrics = evaluate_custom(trainer.model,
                                              validation_dataset,
                                              evaluation_iterator,
@@ -286,7 +286,7 @@ def train_model(params: Params,
         for key, value in validation_metrics.items():
             metrics["eval_validation_" + key] = value
         if evaluation_dataset and evaluate_on_test:
-            output_file = os.path.join(serialization_dir, "eval_test.json.")
+            output_file = os.path.join(serialization_dir, "eval_test.jsonl")
             test_metrics = evaluate_custom(trainer.model,
                                            evaluation_dataset,
                                            evaluation_iterator,

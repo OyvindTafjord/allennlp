@@ -63,6 +63,7 @@ class Trainer(TrainerBase):
                  should_log_learning_rate: bool = False,
                  log_batch_size_period: Optional[int] = None,
                  moving_average: Optional[MovingAverage] = None,
+                 gradient_accumulation_batch_size: int = None,
                  grad_accumulate_epochs: int = 1) -> None:
         """
         A trainer for doing supervised learning. It just takes a labeled dataset
@@ -174,6 +175,9 @@ class Trainer(TrainerBase):
             parameters. Be careful that when saving the checkpoint, we will save the moving averages of
             parameters. This is necessary because we want the saved model to perform as well as the validated
             model if we load it later. But this may cause problems if you restart the training from checkpoint.
+        gradient_accumulation_batch_size: ``int``, (default = None)
+            if provided, then accumulate gradients until the effective batch
+            size is at least this value.
         """
         super().__init__(serialization_dir, cuda_device)
 
@@ -248,6 +252,8 @@ class Trainer(TrainerBase):
         if histogram_interval is not None:
             self._tensorboard.enable_activation_logging(self.model)
 
+        self.gradient_accumulation_batch_size = gradient_accumulation_batch_size
+
     def rescale_gradients(self) -> Optional[float]:
         return training_util.rescale_gradients(self.model, self._grad_norm)
 
@@ -314,7 +320,28 @@ class Trainer(TrainerBase):
         train_generator_tqdm = Tqdm.tqdm(train_generator,
                                          total=num_training_batches)
         cumulative_batch_size = 0
+        accumulated_batches = []
+        accumulated_batch_sizes = []
         for batch_group in train_generator_tqdm:
+            accumulated_batches.append(batch_group)
+            cur_batch = sum([training_util.get_batch_size(batch) for batch in batch_group])
+            accumulated_batch_sizes.append(cur_batch)
+            effective_batch_size = sum(accumulated_batch_sizes)
+
+            # check to see if this is a gradient update step
+            if self.gradient_accumulation_batch_size is None:
+                do_update_grads = True
+            else:
+                if effective_batch_size >= self.gradient_accumulation_batch_size:
+                    do_update_grads = True
+                else:
+                    do_update_grads = False
+
+            if not do_update_grads:
+                # get another batch from the generator
+                continue
+
+            # else run the forward/backward for each batch
             batches_this_epoch += 1
             self._batch_num_total += 1
             batch_num_total = self._batch_num_total
@@ -322,17 +349,23 @@ class Trainer(TrainerBase):
             if (batches_this_epoch - 1) % self._grad_accumulate_epochs == 0:
                 self.optimizer.zero_grad()
 
-            loss = self.batch_loss(batch_group, for_training=True)
+            # process all the accumulated gradients
+            for this_batch, this_batch_size in zip(
+                    accumulated_batches, accumulated_batch_sizes
+            ):
+                loss = self.batch_loss(this_batch, for_training=True)
+                loss = loss * (this_batch_size / float(effective_batch_size))
 
-            if torch.isnan(loss):
-                raise ValueError("nan loss encountered")
+                if torch.isnan(loss):
+                    raise ValueError("nan loss encountered")
+                loss.backward()
+                train_loss += loss.item()
 
-            loss.backward()
+            accumulated_batches = []
+            accumulated_batch_sizes = []
 
-            train_loss += loss.item()
-
+            # now update the gradients
             # TODO: For grad_accumulate_epochs > 1, should this only rescale when updating parameters?
-            # TODO: Better, only run backward and gradients rescale when updating parameters
             batch_grad_norm = self.rescale_gradients()
 
             # This does nothing if batch_num_total is None or you are using a
@@ -686,6 +719,7 @@ class Trainer(TrainerBase):
         lr_scheduler_params = params.pop("learning_rate_scheduler", None)
         grad_accumulate_epochs = params.pop("grad_accumulate_epochs", 1)
         momentum_scheduler_params = params.pop("momentum_scheduler", None)
+        gradient_accumulation_batch_size = params.pop_int("gradient_accumulation_batch_size", None)
 
         if isinstance(cuda_device, list):
             model_device = cuda_device[0]
@@ -757,6 +791,7 @@ class Trainer(TrainerBase):
                    should_log_learning_rate=should_log_learning_rate,
                    log_batch_size_period=log_batch_size_period,
                    moving_average=moving_average,
+                   gradient_accumulation_batch_size=gradient_accumulation_batch_size,
                    grad_accumulate_epochs=grad_accumulate_epochs)
 
 
