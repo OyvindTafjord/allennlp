@@ -18,31 +18,14 @@ from allennlp.data.tokenizers import Token, Tokenizer, WordTokenizer
 from allennlp.data.tokenizers.word_splitter import WordpieceWordSplitter
 
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
-
+# TagSpanType = ((int, int), str)
 
 @DatasetReader.register("bert_mc_qa")
 class BertMCQAReader(DatasetReader):
     """
-    Reads a file from the AllenAI-V1-Feb2018 dataset in Json format.  This data is
-    formatted as jsonl, one json-formatted instance per line.  An example of the json in the data is:
-
-        {"id":"MCAS_2000_4_6",
-        "question":{"stem":"Which technology was developed most recently?",
-            "choices":[
-                {"text":"cellular telephone","label":"A"},
-                {"text":"television","label":"B"},
-                {"text":"refrigerator","label":"C"},
-                {"text":"airplane","label":"D"}
-            ]},
-        "answerKey":"A"
-        }
 
     Parameters
     ----------
-    tokenizer : ``Tokenizer``, optional (default=``WordTokenizer()``)
-        We use this ``Tokenizer`` for both the premise and the hypothesis.  See :class:`Tokenizer`.
-    token_indexers : ``Dict[str, TokenIndexer]``, optional (default=``{"tokens": SingleIdTokenIndexer()}``)
-        We similarly use this for both the premise and the hypothesis.  See :class:`TokenIndexer`.
     """
 
     def __init__(self,
@@ -56,6 +39,7 @@ class BertMCQAReader(DatasetReader):
                  skip_id_regex: str = None,
                  ignore_context: bool = False,
                  skip_and_offset: List[int] = None,
+                 annotation_tags: List[str] = None,
                  context_strip_sep: str = None,
                  context_syntax: str = "c#q#a",
                  sample: int = -1) -> None:
@@ -75,6 +59,11 @@ class BertMCQAReader(DatasetReader):
         self._ignore_context = ignore_context
         self._skip_and_offset = skip_and_offset
         self._context_strip_sep = context_strip_sep
+        self._annotation_tags = annotation_tags
+        if self._annotation_tags is not None:
+            self._tokenizer = WordTokenizer()
+            self._num_annotation_tags = len(self._annotation_tags)
+            self._annotation_tag_index = {tag:idx for idx, tag in enumerate(self._annotation_tags)}
 
 
     @overrides
@@ -120,7 +109,15 @@ class BertMCQAReader(DatasetReader):
                 context = item_json.get("para")
                 if self._ignore_context:
                     context = None
+                context_annotations = None
+                if context is not None and self._annotation_tags is not None:
+                    para_tagging = item_json.get("para_tagging")
+                    context_annotations = self._get_tagged_spans(para_tagging)
                 question_text = item_json["question"]["stem"]
+                question_tagging = item_json.get("question_tagging")
+                question_stem_annotations = None
+                if question_tagging is not None and self._annotation_tags is not None:
+                    question_stem_annotations = self._get_tagged_spans(question_tagging.get("stem"))
 
                 if self._context_strip_sep is not None and context is not None:
                     split = context.split(self._context_strip_sep, 1)
@@ -136,9 +133,14 @@ class BertMCQAReader(DatasetReader):
                 choice_label_to_id = {}
                 choice_text_list = []
                 choice_context_list = []
+                choice_label_list = []
+                choice_annotations_list = []
 
                 any_correct = False
                 choice_id_correction = 0
+                choice_tagging = None
+                if question_tagging is not None and self._annotation_tags is not None:
+                    choice_tagging = question_tagging['choices']
 
                 for choice_id, choice_item in enumerate(item_json["question"]["choices"]):
 
@@ -158,8 +160,14 @@ class BertMCQAReader(DatasetReader):
                     if self._ignore_context:
                         choice_context = None
 
+                    choice_annotations = []
+                    if choice_tagging is not None and self._annotation_tags is not None:
+                        choice_annotations = self._get_tagged_spans(choice_tagging[choice_label])
+
                     choice_text_list.append(choice_text)
                     choice_context_list.append(choice_context)
+                    choice_label_list.append(choice_label)
+                    choice_annotations_list.append(choice_annotations)
 
                     is_correct = 0
                     if item_json.get('answerKey') == choice_label:
@@ -197,13 +205,16 @@ class BertMCQAReader(DatasetReader):
                             continue
 
                     yield self.text_to_instance(
-                        item_id,
-                        question_text,
-                        choice_text_list,
-                        answer_id,
-                        context,
-                        choice_context_list,
-                        debug)
+                        item_id=item_id,
+                        question=question_text,
+                        choice_list=choice_text_list,
+                        answer_id=answer_id,
+                        context=context,
+                        choice_context_list=choice_context_list,
+                        context_annotations=context_annotations,
+                        question_stem_annotations=question_stem_annotations,
+                        choice_annotations_list=choice_annotations_list,
+                        debug=debug)
 
 
     def text_to_instance_per_choice(self,  # type: ignore
@@ -251,6 +262,9 @@ class BertMCQAReader(DatasetReader):
                          answer_id: int = None,
                          context: str = None,
                          choice_context_list: List[str] = None,
+                         context_annotations = None,
+                         question_stem_annotations = None,
+                         choice_annotations_list = None,
                          debug: int = -1) -> Instance:
         # pylint: disable=arguments-differ
         fields: Dict[str, Field] = {}
@@ -258,11 +272,30 @@ class BertMCQAReader(DatasetReader):
         qa_fields = []
         segment_ids_fields = []
         qa_tokens_list = []
+        annotation_tags_fields = []
         for idx, choice in enumerate(choice_list):
             choice_context = context
+            choice_annotations = []
+            annotation_tags_array = None
+            if question_stem_annotations is not None:
+                choice_annotations = choice_annotations_list[idx]
             if choice_context_list is not None and choice_context_list[idx] is not None:
                 choice_context = choice_context_list[idx]
-            qa_tokens, segment_ids = self.bert_features_from_qa(question, choice, choice_context)
+                choice_annotations = []  # Not supported in examples yet
+            if question_stem_annotations is None:
+                qa_tokens, segment_ids = self.bert_features_from_qa(question, choice, choice_context)
+            else:
+                tmp = self.bert_features_from_qa_tags(question,
+                                                        choice,
+                                                        choice_context,
+                                                        context_annotations,
+                                                        question_stem_annotations,
+                                                        choice_annotations)
+                qa_tokens, segment_ids, annotations_tags = tmp
+                # After transpose has shape (num_annotation_tags, len(qa_tokens))
+                annotation_tags_array = numpy.array(annotations_tags).transpose()
+                annotation_tags_field = ArrayField(annotation_tags_array)
+                annotation_tags_fields.append(annotation_tags_field)
             qa_field = TextField(qa_tokens, self._token_indexers)
             segment_ids_field = SequenceLabelField(segment_ids, qa_field)
             qa_fields.append(qa_field)
@@ -271,6 +304,9 @@ class BertMCQAReader(DatasetReader):
             if debug > 0:
                 logger.info(f"qa_tokens = {qa_tokens}")
                 logger.info(f"segment_ids = {segment_ids}")
+                if annotation_tags_array is not None:
+                    logger.info(f"annotation_tags_array = {annotation_tags_array}")
+
 
         fields['question'] = ListField(qa_fields)
         fields['segment_ids'] = ListField(segment_ids_fields)
@@ -287,12 +323,36 @@ class BertMCQAReader(DatasetReader):
             # "choice_tokens_list": [[x.text for x in ct] for ct in choices_tokens_list],
         }
 
+        if len(annotation_tags_fields) > 0:
+            fields['annotation_tags'] = ListField(annotation_tags_fields)
+            metadata['annotation_tags'] = [x.array for x in annotation_tags_fields]
+
         if debug > 0:
             logger.info(f"answer_id = {answer_id}")
 
         fields["metadata"] = MetadataField(metadata)
 
         return Instance(fields)
+
+    # Returns list of (offset, label) for registered tags
+    def _get_tagged_spans(self, json):
+        if json is None:
+            return []
+        tagged_spans = json.get('tagged_spans')
+        if tagged_spans is None:
+            return []
+        res = []
+        for tagged_span in tagged_spans:
+            tag_label = self._normalize_tag(tagged_span['type'])
+            if tag_label is not None:
+                res.append((tagged_span['offset'], tag_label))
+        return res
+
+    def _normalize_tag(self, tag):
+        for tag_norm in self._annotation_tags:
+            if tag_norm in tag:
+                return tag_norm
+        return None
 
     @staticmethod
     def _truncate_tokens(tokens_a, tokens_b, max_length):
@@ -377,3 +437,51 @@ class BertMCQAReader(DatasetReader):
         segment_ids = list(itertools.repeat(0, len(question_tokens) + 2)) + \
                       list(itertools.repeat(1, len(choice_tokens) + 1))
         return tokens, segment_ids
+
+    def _get_tags(self, tokens, tag_offsets_labels):
+        tags = []
+        for token in tokens:
+            token_idx = token.idx
+            tag = [0] * self._num_annotation_tags
+            for offset, label in tag_offsets_labels:
+                if offset[0] <= token_idx < offset[1]:
+                    idx = self._annotation_tag_index[label]
+                    tag[idx] = 1
+            tags.append(tag)
+        return tags
+
+    def _tokens_and_tags(self, text, tag_offsets_labels):
+        word_tokens = self._tokenizer.tokenize(text)
+        tags_raw = self._get_tags(word_tokens, tag_offsets_labels)
+        tokens = []
+        tags = []
+        for wt, tag in zip(word_tokens, tags_raw):
+            wp_tokens = self._word_splitter.split_words(wt.text)
+            tags += [tag] * len(wp_tokens)
+            tokens += wp_tokens
+        return tokens, tags
+
+    def bert_features_from_qa_tags(self,
+                                   question: str,
+                                   answer: str,
+                                   context: str = None,
+                                   context_annotations = [],
+                                   question_stem_annotations = [],
+                                   choice_annotations = []):
+        cls_token = Token("[CLS]")
+        sep_token = Token("[SEP]")
+        empty_tags = [0] * self._num_annotation_tags
+        question_tokens, question_tags = self._tokens_and_tags(question, question_stem_annotations)
+        if context is not None:
+            context_tokens, context_tags = self._tokens_and_tags(context, context_annotations)
+            question_tokens = context_tokens + [sep_token] + question_tokens
+            question_tags = context_tags + [empty_tags] + question_tags
+        choice_tokens, choice_tags = self._tokens_and_tags(answer, choice_annotations)
+        question_tokens, choice_tokens = self._truncate_tokens(question_tokens, choice_tokens, self._max_pieces - 3)
+        question_tags = question_tags[-len(question_tokens):]
+        choice_tags = choice_tags[:len(choice_tokens)]
+        tokens = [cls_token] + question_tokens + [sep_token] + choice_tokens + [sep_token]
+        tags = [empty_tags] + question_tags + [empty_tags] + choice_tags + [empty_tags]
+        segment_ids = list(itertools.repeat(0, len(question_tokens) + 2)) + \
+                      list(itertools.repeat(1, len(choice_tokens) + 1))
+        return tokens, segment_ids, tags
