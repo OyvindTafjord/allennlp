@@ -233,7 +233,8 @@ class BertMCQAAnnotationsModel(Model):
                  layer_freeze_regexes: List[str] = None,
                  mc_strategy: str = None,
                  num_annotations: int = None,
-                 attention_size: int = None,
+                 attention_dim: int = None,
+                 attention_output_dim: int = None,
                  attention_normalize: bool = True,
                  attention_loss_weight: float = 1.0,
                  regularizer: Optional[RegularizerApplicator] = None) -> None:
@@ -262,13 +263,15 @@ class BertMCQAAnnotationsModel(Model):
         self._attention = None
         self._attention_loss_weight = attention_loss_weight
         self._num_annotations = num_annotations
-        if attention_size is not None and num_annotations is not None:
+        if attention_dim is not None and num_annotations is not None:
+            self._attention_output_dim = attention_output_dim or self._output_dim
             self._attention = MultiHeadAttention(num_heads=num_annotations,
                                                  input_dim=self._output_dim,
-                                                 attention_dim=attention_size * num_annotations,
-                                                 values_dim=attention_size * num_annotations,
+                                                 attention_dim=attention_dim * num_annotations,
+                                                 values_dim=attention_dim * num_annotations,
+                                                 output_projection_dim=self._attention_output_dim,
                                                  normalize=attention_normalize)
-            classifier_input_dim *= 2
+            classifier_input_dim += self._attention_output_dim
         self._mc_strategy = mc_strategy
         if self._mc_strategy in ["concat", "concat+"]:
             classifier_input_dim *= 2
