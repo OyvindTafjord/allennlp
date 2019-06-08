@@ -35,7 +35,7 @@ def main(config, replace, outdir, shfile, index) -> None:
         new_file = os.path.join(outdir, f'{config_split[0]}-multi{index}{config_split[1]}')
         new_dir = os.path.join(outdir, f'multi{index}')
         convert_config(old_config, new_file, new_params)
-        out_content.append(f'allennlp/run.py train -s {new_dir} {new_file}')
+        out_content.append(f'allennlp/run.py train --include-package ernie.include_all -s {new_dir} {new_file}')
         index += 1
     open(shfile, "w").write("\n".join(out_content))
 
