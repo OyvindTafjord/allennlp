@@ -419,6 +419,8 @@ class BertMCQAAnnotationsModel(Model):
         else:
             output_dict['label_probs'] = torch.nn.functional.softmax(label_logits, dim=1)
             output_dict['answer_index'] = label_logits.argmax(1)
+        if attentions is not None:
+            output_dict['annotation_attentions'] = attentions
 
         if label is not None:
             if self._per_choice_loss:
