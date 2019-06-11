@@ -29,6 +29,7 @@ class BertMCQAModel(Model):
                  requires_grad: bool = True,
                  top_layer_only: bool = True,
                  bert_weights_model: str = None,
+                 initialize_classifier: bool = False,
                  per_choice_loss: bool = False,
                  layer_freeze_regexes: List[str] = None,
                  mc_strategy: str = None,
@@ -62,7 +63,8 @@ class BertMCQAModel(Model):
                 self._pre_classifier = Linear(classifier_input_dim, classifier_input_dim)
                 self._pre_classifier.apply(self._bert_model.init_bert_weights)
         self._classifier = None
-        if bert_weights_model and hasattr(bert_model_loaded.model, "_classifier"):
+        if bert_weights_model and hasattr(bert_model_loaded.model, "_classifier") \
+                and not initialize_classifier:
             self._classifier = bert_model_loaded.model._classifier
             old_dims = (self._classifier.in_features, self._classifier.out_features)
             new_dims = (classifier_input_dim, classifier_output_dim)
