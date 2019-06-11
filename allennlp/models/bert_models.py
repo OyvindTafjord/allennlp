@@ -237,8 +237,9 @@ class BertMCQAAnnotationsModel(Model):
                  mc_strategy: str = None,
                  num_annotations: int = None,
                  attention_dim: int = None,
+                 attention_loss_per_token: bool = False,
                  attention_output_dim: int = None,
-                 attention_normalize: bool = True,
+                 attention_normalize: bool = True, #deprecated
                  attention_loss_weight: float = 1.0,
                  regularizer: Optional[RegularizerApplicator] = None) -> None:
         super().__init__(vocab, regularizer)
@@ -268,12 +269,15 @@ class BertMCQAAnnotationsModel(Model):
         self._num_annotations = num_annotations
         if attention_dim is not None and num_annotations is not None:
             self._attention_output_dim = attention_output_dim or self._output_dim
+            self._attention_loss_per_token = attention_loss_per_token
+            normalization_function = "sigmoid" if attention_loss_per_token else "softmax"
             self._attention = MultiHeadAttention(num_heads=num_annotations,
                                                  input_dim=self._output_dim,
                                                  attention_dim=attention_dim * num_annotations,
                                                  values_dim=attention_dim * num_annotations,
                                                  output_projection_dim=self._attention_output_dim,
-                                                 normalize=attention_normalize)
+                                                 normalization_function=normalization_function,
+                                                 normalize=not attention_loss_per_token)
             classifier_input_dim += self._attention_output_dim
         self._mc_strategy = mc_strategy
         if self._mc_strategy in ["concat", "concat+"]:
@@ -358,37 +362,33 @@ class BertMCQAAnnotationsModel(Model):
         attentions = None
         if self._attention is not None:
             query = encoded_layers[:,0]
-            attended_layer, attentions = self._attention(query, encoded_layers, question_mask_flat)
+            attention_data = self._attention(query, encoded_layers, question_mask_flat)
+            attended_layer, attentions, attentions_raw = attention_data
             if self._debug >= 0:
                 print(f"attentions = {attentions}")
                 print(f"attention_tags = {annotation_tags}")
                 print(f"attention_tags_flat = {annotation_tags_flat}")
             if annotation_tags is not None:
-                """
-                if not self._attention._normalize:
-                    # For now, if attention is not normalized we'll treat each attention as
-                    # prediction logit for 0/1 tags and average cross-entropy loss over unmasked tokens
-                    question_mask_float = question_mask.float()
+                if self._attention_loss_per_token:
+                    mask_repeated = question_mask_flat.repeat(1, self._num_annotations)\
+                        .view(batch_size * num_choices, self._num_annotations, -1).float()
+                    if self._debug >= 0:
+                        print(f"SIZES: {attentions_raw.size()}, {annotation_tags_flat.size()}, {mask_repeated.size()}")
                     attention_loss = binary_cross_entropy_with_logits(
-                        attentions,
-                        tags.float(),
-                        weight=question_mask_float,
+                        attentions_raw,
+                        annotation_tags_flat.float(),
+                        weight=mask_repeated,
                         reduction='sum'
-                    )/question_mask_float.sum()
-                    # Still need to normalize the attentions
-                    attentions = torch.sigmoid(attentions) * question_mask_float
-                    attentions = attentions / (attentions.sum(dim=1, keepdim=True) + 1e-13)
-                """
-                if True:
+                    ) / question_mask_flat.sum()
+                else:
                     # Take dot products of attentions and 0/1 tags to get combined probability for 1's
                     tag_probs = (attentions * annotation_tags_flat).sum(dim=2) + 1e-10
                     attention_loss = -tag_probs.log().mean()
             if self._debug >= 0:
-                print(f"tag_probs = {tag_probs}")
+                print(f"attentions = {attentions}")
                 print(f"attention_loss = {attention_loss}")
 
             pooled_output = torch.cat((pooled_output, attended_layer), dim=1)
-
 
         if self._mc_strategy in ["concat", "concat+"]:
             # Average pooled output across all answer options and concat to original

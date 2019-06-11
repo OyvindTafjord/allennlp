@@ -41,7 +41,7 @@ class MultiHeadAttention(torch.nn.Module, Registrable):
 
     Output:
 
-    - values, attentions: shape ``((batch_size, values_dim), (batch_size, num_heads, timesteps))``.
+    - values, attentions, attentions_raw: shape ``((batch_size, values_dim), (batch_size, num_heads, timesteps))``.
     """
     def __init__(self,
                  num_heads: int,
@@ -50,6 +50,7 @@ class MultiHeadAttention(torch.nn.Module, Registrable):
                  values_dim: int,
                  output_projection_dim: int = None,
                  attention_dropout_prob: float = 0.1,
+                 normalization_function: str = 'softmax',
                  normalize: bool = True) -> None:
         super().__init__()
 
@@ -59,6 +60,11 @@ class MultiHeadAttention(torch.nn.Module, Registrable):
         self._attention_dim = attention_dim
         self._values_dim = values_dim
         self._normalize = normalize
+        self._normalization_function = normalization_function
+        valid_normalization_functions = ['softmax', 'sigmoid']
+        if normalization_function not in valid_normalization_functions:
+            raise ValueError(f"The normalization_function ({normalization_function}) is not in "
+                             f"list of valid functions: {valid_normalization_functions}.")
 
         if attention_dim % num_heads != 0:
             raise ValueError(f"Key size ({attention_dim}) must be divisible by the number of "
@@ -118,12 +124,19 @@ class MultiHeadAttention(torch.nn.Module, Registrable):
         # shape (num_heads * batch_size, 1, timesteps)
         scaled_similarities = torch.bmm(query_per_head.unsqueeze(1) / self._scale, keys_per_head.transpose(1, 2))
 
+        mask_repeated = mask.repeat(1, num_heads).view(batch_size * num_heads, timesteps).float()
         # shape (num_heads * batch_size, 1, timesteps)
         # Normalise the distributions, using the same mask for all heads.
-        attention_raw = masked_softmax(scaled_similarities,
-                                   mask.repeat(1, num_heads).view(batch_size * num_heads, timesteps),
-                                   memory_efficient=True)
-        attention = self._attention_dropout(attention_raw)
+        if self._normalization_function == "softmax":
+            attention_unnormalized = scaled_similarities * mask_repeated.unsqueeze(1)
+            attention_full = masked_softmax(scaled_similarities,
+                                           mask_repeated,
+                                           memory_efficient=True)
+        else:
+            attention_unnormalized = torch.sigmoid(scaled_similarities) * mask_repeated.unsqueeze(1)
+            attention_full = attention_unnormalized / (attention_unnormalized.sum(dim=2, keepdim=True) + 1e-13)
+
+        attention = self._attention_dropout(attention_full)
 
         # Take a weighted sum of the values with respect to the attention
         # distributions for each element in the num_heads * batch_size dimension.
@@ -135,6 +148,8 @@ class MultiHeadAttention(torch.nn.Module, Registrable):
         # Project to final output dimension.
         # shape (batch_size, output_dim)
         outputs = self._output_projection(outputs)
-        returned_attentions = attention_raw if self._normalize else scaled_similarities
+        returned_attentions = attention_full if self._normalize else attention_unnormalized
         returned_attentions = returned_attentions.view(batch_size, num_heads, timesteps)
-        return outputs, returned_attentions
+        attention_raw = scaled_similarities.view(batch_size, num_heads, timesteps)
+
+        return outputs, returned_attentions, attention_raw
