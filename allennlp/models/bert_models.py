@@ -391,7 +391,7 @@ class BertMCQAAnnotationsModel(Model):
                         annotation_tags_flat.float(),
                         weight=mask_repeated,
                         reduction='sum'
-                    ) / question_mask_flat.sum()
+                    ) / mask_repeated.sum()
                 else:
                     # Take dot products of attentions and 0/1 tags to get combined probability for 1's
                     tag_probs = (attentions * annotation_tags_flat).sum(dim=2) + 1e-10
