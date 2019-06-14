@@ -35,7 +35,7 @@ class QRTaggerReader(DatasetReader):
                  max_pieces: int = None,
                  pretrained_model: str = None,
                  sample: int = -1) -> None:
-        super().__init__()
+        super().__init__(lazy=lazy)
         self._tokenizer = tokenizer or WordTokenizer()
         self._token_indexers = token_indexers or {"tokens": SingleIdTokenIndexer()}
 

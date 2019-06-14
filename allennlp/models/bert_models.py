@@ -29,7 +29,7 @@ class BertMCQAModel(Model):
                  requires_grad: bool = True,
                  top_layer_only: bool = True,
                  bert_weights_model: str = None,
-                 initialize_classifier: bool = False,
+                 reset_classifier: bool = False,
                  per_choice_loss: bool = False,
                  layer_freeze_regexes: List[str] = None,
                  mc_strategy: str = None,
@@ -64,7 +64,7 @@ class BertMCQAModel(Model):
                 self._pre_classifier.apply(self._bert_model.init_bert_weights)
         self._classifier = None
         if bert_weights_model and hasattr(bert_model_loaded.model, "_classifier") \
-                and not initialize_classifier:
+                and not reset_classifier:
             self._classifier = bert_model_loaded.model._classifier
             old_dims = (self._classifier.in_features, self._classifier.out_features)
             new_dims = (classifier_input_dim, classifier_output_dim)
@@ -231,7 +231,7 @@ class BertMCQAAnnotationsModel(Model):
                  requires_grad: bool = True,
                  top_layer_only: bool = True,
                  bert_weights_model: str = None,
-                 initialize_classifier: bool = False,
+                 reset_classifier: bool = False,
                  per_choice_loss: bool = False,
                  layer_freeze_regexes: List[str] = None,
                  mc_strategy: str = None,
@@ -287,13 +287,25 @@ class BertMCQAAnnotationsModel(Model):
                 self._pre_classifier.apply(self._bert_model.init_bert_weights)
         self._classifier = None
         if bert_weights_model and hasattr(bert_model_loaded.model, "_classifier") \
-                and not initialize_classifier:
+                and not reset_classifier:
             self._classifier = bert_model_loaded.model._classifier
             old_dims = (self._classifier.in_features, self._classifier.out_features)
             new_dims = (classifier_input_dim, classifier_output_dim)
             if old_dims != new_dims:
-                logging.info(f"NOT copying BERT classifier weights, incompatible dims: {old_dims} vs {new_dims}")
-                self._classifier = None
+                if old_dims[1] != new_dims[1]:
+                    logging.info(f"NOT copying BERT classifier weights, incompatible dims: {old_dims} vs {new_dims}")
+                    self._classifier = None
+                else:
+                    logging.info(f"Partial copying BERT classifier weights, from: {old_dims} to {new_dims}")
+                    old_classifier = self._classifier
+                    self._classifier = Linear(classifier_input_dim, classifier_output_dim)
+                    self._classifier.apply(self._bert_model.init_bert_weights)
+                    copy_dim = min(old_dims[0], new_dims[0])
+                    # Copy parameters from old classifier, since the first input dimensions are
+                    # typically the same Bert pooled output
+                    self._classifier.weight.data[:, 0:copy_dim] = old_classifier.weight.data[:, 0:copy_dim]
+            else:
+                logging.info(f"Copying BERT classifier weights")
         if self._classifier is None:
             self._classifier = Linear(classifier_input_dim, classifier_output_dim)
             self._classifier.apply(self._bert_model.init_bert_weights)
