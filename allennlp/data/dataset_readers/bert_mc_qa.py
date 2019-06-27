@@ -42,6 +42,7 @@ class BertMCQAReader(DatasetReader):
                  annotation_tags: List[str] = None,
                  context_strip_sep: str = None,
                  context_syntax: str = "c#q#a",
+                 dann_mode: bool = False,
                  sample: int = -1) -> None:
         super().__init__()
         self._token_indexers = {'tokens': SingleIdTokenIndexer()}
@@ -60,6 +61,7 @@ class BertMCQAReader(DatasetReader):
         self._skip_and_offset = skip_and_offset
         self._context_strip_sep = context_strip_sep
         self._annotation_tags = annotation_tags
+        self._dann_mode = dann_mode
         if self._annotation_tags is not None:
             self._tokenizer = WordTokenizer()
             self._num_annotation_tags = len(self._annotation_tags)
@@ -329,6 +331,14 @@ class BertMCQAReader(DatasetReader):
 
         if debug > 0:
             logger.info(f"answer_id = {answer_id}")
+
+        if self._dann_mode:
+            domain = debug % 2
+            fields['domain_label'] = LabelField(domain, skip_indexing = True)
+            #if domain > 0:
+            #    del fields['label']
+            if debug > 0:
+                logger.info(f"domain = {domain}")
 
         fields["metadata"] = MetadataField(metadata)
 
