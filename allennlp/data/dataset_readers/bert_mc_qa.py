@@ -10,6 +10,7 @@ from overrides import overrides
 from allennlp.common.file_utils import cached_path
 from allennlp.common.util import JsonDict
 from allennlp.data.dataset_readers.dataset_reader import DatasetReader
+from allennlp.data.document_retriever import combine_sentences, DocumentRetriever
 from allennlp.data.fields import ArrayField, Field, TextField, LabelField
 from allennlp.data.fields import ListField, MetadataField, SequenceLabelField
 from allennlp.data.instance import Instance
@@ -42,6 +43,8 @@ class BertMCQAReader(DatasetReader):
                  annotation_tags: List[str] = None,
                  context_strip_sep: str = None,
                  context_syntax: str = "c#q#a",
+                 document_retriever: DocumentRetriever = None,
+                 context_format: Dict[str, Any] = None,
                  dann_mode: bool = False,
                  sample: int = -1) -> None:
         super().__init__()
@@ -61,6 +64,8 @@ class BertMCQAReader(DatasetReader):
         self._skip_and_offset = skip_and_offset
         self._context_strip_sep = context_strip_sep
         self._annotation_tags = annotation_tags
+        self.document_retriever = document_retriever
+        self._context_format = context_format
         self._dann_mode = dann_mode
         if self._annotation_tags is not None:
             self._tokenizer = WordTokenizer()
@@ -159,6 +164,9 @@ class BertMCQAReader(DatasetReader):
 
                     choice_text = choice_item["text"]
                     choice_context = choice_item.get("para")
+                    if choice_context is None and context is None and self._context_format is not None:
+                        choice_context = self._get_context(question_text, choice_text)
+
                     if self._ignore_context:
                         choice_context = None
 
@@ -343,6 +351,15 @@ class BertMCQAReader(DatasetReader):
         fields["metadata"] = MetadataField(metadata)
 
         return Instance(fields)
+
+    def _get_context(self, question, answer):
+        assert(self._context_format['mode'] == "concat")
+        assert(self.document_retriever is not None)
+        sentences = self.document_retriever.query({'q': question, 'a': answer})
+        context = combine_sentences(sentences,
+                                    num=self._context_format.get('num_sentences'),
+                                    max_len=self._context_format.get('max_sentence_length'))
+        return context
 
     # Returns list of (offset, label) for registered tags
     def _get_tagged_spans(self, json):

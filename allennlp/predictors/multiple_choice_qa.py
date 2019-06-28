@@ -23,7 +23,9 @@ class MultipleChoiceQAPredictor(Predictor):
         dataset_reader = cast(BertMCQAReader, self._dataset_reader)
 
         question_raw = json_dict['question']
+        question_mc = None
         if isinstance(question_raw, str):
+            question_mc = question_raw
             question_data = dataset_reader.split_mc_question(question_raw)
         else:
             question_data = question_raw
@@ -32,6 +34,9 @@ class MultipleChoiceQAPredictor(Predictor):
         choice_labels = [choice['label'] for choice in question_data['choices']]
         context = json_dict.get("para")
         choice_context_list = [choice.get('para') for choice in question_data['choices']]
+        no_context = context is None and choice_context_list[0] is None
+        if no_context and dataset_reader._context_format is not None:
+            choice_context_list = [dataset_reader._get_context(question_text, choice) for choice in choice_text_list]
 
         instance = dataset_reader.text_to_instance(
             "NA",
@@ -41,8 +46,14 @@ class MultipleChoiceQAPredictor(Predictor):
             choice_context_list=choice_context_list
         )
 
-        extra_info = {'question': question_raw,
-                      'choice_labels': choice_labels}
+        if question_mc is None:
+            question_mc = " ".join([question_text, *[f"(x) y" for x,y in zip(choice_labels, choice_text_list)]])
+
+        extra_info = {'id': question_data.get('id', "NA"),
+                      'question': question_mc,
+                      'choice_labels': choice_labels,
+                      'context': context,
+                      'choice_context_list': choice_context_list}
 
         return instance, extra_info
 
@@ -63,6 +74,11 @@ class MultipleChoiceQAPredictor(Predictor):
         outputs['answer'] = answer
         outputs['score'] = score
         outputs['question_tokens_list'] = instance.fields['metadata']['question_tokens_list']
+
+        # Aristo system format predictions
+        labels_scores = zip(return_dict['choice_labels'], outputs['label_probs'])
+        choices = [{"label": x, "score": y} for x,y in labels_scores]
+        outputs['predictions'] = {"choices": choices}
 
         return_dict.update(outputs)
 

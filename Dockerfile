@@ -60,6 +60,8 @@ RUN cd allennlp/tools/EVALB && make &> /dev/null && cd ../../../
 ARG CACHE_MODELS=false
 RUN ./scripts/cache_models.py
 
+# Custom for document_retriever code in bert_exp1 branch
+RUN pip install elasticsearch
 
 # Optional argument to set an environment variable with the Git SHA
 ARG SOURCE_COMMIT
