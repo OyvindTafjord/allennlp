@@ -86,11 +86,16 @@ class BertMCQAReader(DatasetReader):
         with open(file_path, 'r') as data_file:
             logger.info("Reading QA instances from jsonl dataset at: %s", file_path)
             for line in data_file:
+                item_json = json.loads(line.strip())
+
+                item_id = item_json["id"]
+                if self._skip_id_regex and re.match(self._skip_id_regex, item_id):
+                    continue
+
                 counter -= 1
                 debug -= 1
                 if counter == 0:
                     break
-                item_json = json.loads(line.strip())
                 if offset_tracker is not None:
                     if offset_tracker == 0:
                         offset_tracker = self._skip_and_offset[0] - 1
@@ -110,9 +115,6 @@ class BertMCQAReader(DatasetReader):
                     if debug > 0:
                         logger.info(item_json)
 
-                item_id = item_json["id"]
-                if self._skip_id_regex and re.match(self._skip_id_regex, item_id):
-                    continue
                 context = item_json.get("para")
                 if self._ignore_context:
                     context = None
