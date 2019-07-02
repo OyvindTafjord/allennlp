@@ -116,6 +116,9 @@ class BertMCQAReader(DatasetReader):
                         logger.info(item_json)
 
                 context = item_json.get("para")
+
+                if context is None and self._context_format is not None:
+                    context = self._get_q_context(item_json)
                 if self._ignore_context:
                     context = None
                 context_annotations = None
@@ -167,7 +170,7 @@ class BertMCQAReader(DatasetReader):
                     choice_text = choice_item["text"]
                     choice_context = choice_item.get("para")
                     if choice_context is None and context is None and self._context_format is not None:
-                        choice_context = self._get_context(question_text, choice_text)
+                        choice_context = self._get_qa_context(question_text, choice_text)
 
                     if self._ignore_context:
                         choice_context = None
@@ -340,6 +343,8 @@ class BertMCQAReader(DatasetReader):
             metadata['annotation_tags'] = [x.array for x in annotation_tags_fields]
 
         if debug > 0:
+            logger.info(f"context = {context}")
+            logger.info(f"choice_context_list = {choice_context_list}")
             logger.info(f"answer_id = {answer_id}")
 
         if self._dann_mode:
@@ -354,8 +359,22 @@ class BertMCQAReader(DatasetReader):
 
         return Instance(fields)
 
-    def _get_context(self, question, answer):
-        assert(self._context_format['mode'] == "concat")
+    def _get_q_context(self, item_json):
+        if self._context_format['mode'] == "concat-q-all-a":
+            assert(self.document_retriever is not None)
+            question_text = item_json["question"]["stem"]
+            choice_text_list = [c['text'] for c in item_json['question']['choices']]
+            query = " ".join([question_text] + choice_text_list)
+            sentences = self.document_retriever.query({'q': query})
+            context = combine_sentences(sentences,
+                                        num=self._context_format.get('num_sentences'),
+                                        max_len=self._context_format.get('max_sentence_length'))
+            return context
+        return None
+
+    def _get_qa_context(self, question, answer):
+        if self._context_format['mode'] != "concat":
+            return None
         assert(self.document_retriever is not None)
         sentences = self.document_retriever.query({'q': question, 'a': answer})
         context = combine_sentences(sentences,
