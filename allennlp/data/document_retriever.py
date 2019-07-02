@@ -38,7 +38,7 @@ def combine_sentences(hits, num: int = None, max_len: int = None) -> str:
     sentences_processed = []
     for sentence in sentences:
         new = sentence.strip()
-        if re.match(r'.*\\W$', new):
+        if re.match(r'.*\w$', new):
             new = new + "."
         sentences_processed.append(new)
     output = " ".join(reversed(sentences_processed))
@@ -109,7 +109,6 @@ class DocumentRetriever(Registrable):
         if self._max_cache_size and len(self._cache) >= self._max_cache_size:
             return
         else:
-            logging.info(f"Adding cache_key {cache_key, self._cache_fill_counter}")
             self._cache[cache_key] = result
             self._cache_fill_counter += 1
             if self._cache_save_frequency is not None \
