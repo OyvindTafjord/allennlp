@@ -1,7 +1,7 @@
 from typing import Any, Dict, List, Union
 from overrides import overrides
+import logging
 
-from elasticsearch import Elasticsearch
 import gzip
 import json
 import re
@@ -88,7 +88,7 @@ class DocumentRetriever(Registrable):
             raw_res = self._cache[cache_key]
         else:
             raw_res = self._retriever(query)
-            if raw_res:
+            if raw_res is not None:
                 self._cache_add(cache_key, raw_res)
         res = raw_res
         return res
@@ -109,6 +109,7 @@ class DocumentRetriever(Registrable):
         if self._max_cache_size and len(self._cache) >= self._max_cache_size:
             return
         else:
+            logging.info(f"Adding cache_key {cache_key, self._cache_fill_counter}")
             self._cache[cache_key] = result
             self._cache_fill_counter += 1
             if self._cache_save_frequency is not None \
@@ -118,11 +119,13 @@ class DocumentRetriever(Registrable):
 
     def _load_cache_files(self, cache_files):
         cache_files = cache_files.split(",")
+        logging.info(f"Loading document_retriever caches from {cache_files}")
         assert(self._cache_format == 'jsonl.gz')
         for cache_file in cache_files:
             data = load_jsonl_gz(cache_file)
             for item_json in data:
                 self._cache[item_json["key"]] = item_json["res"]
+        logging.info(f"Size of document_retriever caches is {len(self._cache)}")
 
     def save_cache_file(self, file_name=None):
         file_name = file_name or self._cache_file_out
@@ -152,6 +155,8 @@ class ElasticSearchQARetriever(DocumentRetriever):
                  cache_format: str = "jsonl.gz",
                  cache_save_frequency: int = None,
                  max_cache_size: int = None):
+
+        from elasticsearch import Elasticsearch
 
         super().__init__(cache_file_out=cache_file_out,
                          cache_files=cache_files,
