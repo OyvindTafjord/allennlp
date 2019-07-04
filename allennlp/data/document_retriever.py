@@ -142,8 +142,10 @@ class ElasticSearchQARetriever(DocumentRetriever):
     def __init__(self,
                  host: str,
                  port: int = 9200,
+                 extra_es_args: Dict[str, Any] = None,
                  indices: Union[str, List[str]]= None,
                  query_format: str = "aristo-qa",
+                 dfs_query_then_fetch: bool = True,
                  retries: int = 3,
                  timeout: int = 60,
                  max_question_length: int = None,
@@ -173,10 +175,15 @@ class ElasticSearchQARetriever(DocumentRetriever):
         self._max_question_length = max_question_length
         self._max_document_length = max_document_length
         self._num_retrievals = num_retrievals
+        self._dfs_query_then_fetch = dfs_query_then_fetch
+        self._query_args = {}
+        if dfs_query_then_fetch:
+            self._query_args["search_type"] = "dfs_query_then_fetch"
 
+        extra_es_args = extra_es_args or {}
         self._es = Elasticsearch(hosts=[{"host": host, "port": port}],
                                  retries=retries,
-                                 timeout=timeout)
+                                 timeout=timeout, **extra_es_args)
 
 
     @overrides
@@ -201,7 +208,7 @@ class ElasticSearchQARetriever(DocumentRetriever):
                                            require_match=True,
                                            max_hits=max_hits,
                                            max_question_length=self._max_question_length)
-        res = self._es.search(index=self._indices, body=es_query)
+        res = self._es.search(index=self._indices, body=es_query, **self._query_args)
         hits = res['hits']['hits']
         if self._max_document_length:
             hits = list(filter(lambda x:len(x['_source']['text']) <= self._max_document_length, hits))

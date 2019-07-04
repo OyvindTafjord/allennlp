@@ -117,15 +117,17 @@ class BertMCQAReader(DatasetReader):
 
                 context = item_json.get("para")
 
+                question_text = item_json["question"]["stem"]
+
                 if context is None and self._context_format is not None:
-                    context = self._get_q_context(item_json)
+                    choice_text_list = [c['text'] for c in item_json['question']['choices']]
+                    context = self._get_q_context(question_text, choice_text_list)
                 if self._ignore_context:
                     context = None
                 context_annotations = None
                 if context is not None and self._annotation_tags is not None:
                     para_tagging = item_json.get("para_tagging")
                     context_annotations = self._get_tagged_spans(para_tagging)
-                question_text = item_json["question"]["stem"]
                 question_tagging = item_json.get("question_tagging")
                 question_stem_annotations = None
                 if question_tagging is not None and self._annotation_tags is not None:
@@ -359,11 +361,9 @@ class BertMCQAReader(DatasetReader):
 
         return Instance(fields)
 
-    def _get_q_context(self, item_json):
+    def _get_q_context(self, question_text, choice_text_list):
         if self._context_format['mode'] == "concat-q-all-a":
             assert(self.document_retriever is not None)
-            question_text = item_json["question"]["stem"]
-            choice_text_list = [c['text'] for c in item_json['question']['choices']]
             query = " ".join([question_text] + choice_text_list)
             sentences = self.document_retriever.query({'q': query})
             context = combine_sentences(sentences,

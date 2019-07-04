@@ -232,6 +232,7 @@ class BertMCQAAnnotationsModel(Model):
                  top_layer_only: bool = True,
                  bert_weights_model: str = None,
                  reset_classifier: bool = False,
+                 new_classifier_factor: float = 1.0,
                  per_choice_loss: bool = False,
                  layer_freeze_regexes: List[str] = None,
                  mc_strategy: str = None,
@@ -303,6 +304,8 @@ class BertMCQAAnnotationsModel(Model):
                     copy_dim = min(old_dims[0], new_dims[0])
                     # Copy parameters from old classifier, since the first input dimensions are
                     # typically the same Bert pooled output
+                    if new_classifier_factor != 1.0:
+                        self._classifier.weight.data = self._classifier.weight.data * new_classifier_factor
                     self._classifier.weight.data[:, 0:copy_dim] = old_classifier.weight.data[:, 0:copy_dim]
             else:
                 logging.info(f"Copying BERT classifier weights")
@@ -349,7 +352,6 @@ class BertMCQAAnnotationsModel(Model):
 
         question_mask = (input_ids != 0).long()
         question_mask_flat = util.combine_initial_dims(question_mask)
-        annotation_tags_flat = annotation_tags.view(batch_size * num_choices, self._num_annotations, -1)
 
         if self._debug >= 0:
             print(f"batch_size = {batch_size}")
@@ -379,8 +381,8 @@ class BertMCQAAnnotationsModel(Model):
             if self._debug >= 0:
                 print(f"attentions = {attentions}")
                 print(f"attention_tags = {annotation_tags}")
-                print(f"attention_tags_flat = {annotation_tags_flat}")
             if annotation_tags is not None:
+                annotation_tags_flat = annotation_tags.view(batch_size * num_choices, self._num_annotations, -1)
                 if self._attention_loss_per_token:
                     mask_repeated = question_mask_flat.repeat(1, self._num_annotations)\
                         .view(batch_size * num_choices, self._num_annotations, -1).float()
@@ -432,7 +434,7 @@ class BertMCQAAnnotationsModel(Model):
             output_dict['label_probs'] = torch.nn.functional.softmax(label_logits, dim=1)
             output_dict['answer_index'] = label_logits.argmax(1)
         if attentions is not None:
-            output_dict['annotation_attentions'] = attentions
+            output_dict['annotation_attentions'] = attentions.view(batch_size, num_choices, self._num_annotations, -1)
 
         if label is not None:
             if self._per_choice_loss:
