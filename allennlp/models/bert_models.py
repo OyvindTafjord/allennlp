@@ -2,12 +2,13 @@ from typing import Dict, Optional, List, Any
 
 import logging
 from overrides import overrides
-from pytorch_pretrained_bert.modeling import BertModel, gelu
+from pytorch_pretrained_bert.modeling import BertConfig, BertModel, gelu
 import re
 import torch
 from torch.nn.modules.linear import Linear
 from torch.nn.functional import binary_cross_entropy_with_logits
 
+from allennlp.common.params import Params
 from allennlp.data import Vocabulary
 from allennlp.models.archival import load_archive
 from allennlp.models.model import Model
@@ -17,6 +18,69 @@ from allennlp.modules.scalar_mix import ScalarMix
 from allennlp.nn import RegularizerApplicator, util
 from allennlp.training.metrics import BooleanAccuracy, CategoricalAccuracy
 
+
+PRETRAINED_CONFIG_MAP = {
+    'bert-base-uncased': {
+        "attention_probs_dropout_prob": 0.1,
+        "hidden_act": "gelu",
+        "hidden_dropout_prob": 0.1,
+        "hidden_size": 768,
+        "initializer_range": 0.02,
+        "intermediate_size": 3072,
+        "max_position_embeddings": 512,
+        "num_attention_heads": 12,
+        "num_hidden_layers": 12,
+        "type_vocab_size": 2,
+        "vocab_size": 30522
+    },
+    'bert-large-uncased': {
+        "attention_probs_dropout_prob": 0.1,
+        "hidden_act": "gelu",
+        "hidden_dropout_prob": 0.1,
+        "hidden_size": 1024,
+        "initializer_range": 0.02,
+        "intermediate_size": 4096,
+        "max_position_embeddings": 512,
+        "num_attention_heads": 16,
+        "num_hidden_layers": 24,
+        "type_vocab_size": 2,
+        "vocab_size": 30522
+    }
+    ,
+    'bert-base-cased': {
+        "attention_probs_dropout_prob": 0.1,
+        "hidden_act": "gelu",
+        "hidden_dropout_prob": 0.1,
+        "hidden_size": 768,
+        "initializer_range": 0.02,
+        "intermediate_size": 3072,
+        "max_position_embeddings": 512,
+        "num_attention_heads": 12,
+        "num_hidden_layers": 12,
+        "type_vocab_size": 2,
+        "vocab_size": 28996
+    }
+    ,
+    'bert-large-cased': {
+        "attention_probs_dropout_prob": 0.1,
+        "directionality": "bidi",
+        "hidden_act": "gelu",
+        "hidden_dropout_prob": 0.1,
+        "hidden_size": 1024,
+        "initializer_range": 0.02,
+        "intermediate_size": 4096,
+        "max_position_embeddings": 512,
+        "num_attention_heads": 16,
+        "num_hidden_layers": 24,
+        "pooler_fc_size": 768,
+        "pooler_num_attention_heads": 12,
+        "pooler_num_fc_layers": 3,
+        "pooler_size_per_head": 128,
+        "pooler_type": "first_token_transform",
+        "type_vocab_size": 2,
+        "vocab_size": 28996
+    }
+}
 
 @Model.register("bert_mc_qa")
 class BertMCQAModel(Model):
@@ -242,10 +306,15 @@ class BertMCQAAnnotationsModel(Model):
                  attention_output_dim: int = None,
                  attention_normalize: bool = True, #deprecated
                  attention_loss_weight: float = 1.0,
+                 on_load: bool = False,
                  regularizer: Optional[RegularizerApplicator] = None) -> None:
         super().__init__(vocab, regularizer)
 
-        if bert_weights_model:
+        if on_load:
+            logging.info(f"Skipping loading of initial BERT weights")
+            bert_config = BertConfig.from_dict(PRETRAINED_CONFIG_MAP[pretrained_model])
+            self._bert_model = BertModel(bert_config)
+        elif bert_weights_model:
             logging.info(f"Loading BERT weights model from {bert_weights_model}")
             bert_model_loaded = load_archive(bert_weights_model)
             self._bert_model = bert_model_loaded.model._bert_model
@@ -470,6 +539,22 @@ class BertMCQAAnnotationsModel(Model):
             tweaked_k = k.replace('LayerNorm.gamma', 'LayerNorm.weight').replace('LayerNorm.beta', 'LayerNorm.bias')
             tweaked_dict[tweaked_k] = v
         super().load_state_dict(tweaked_dict)
+
+    @classmethod
+    def _load(cls,
+              config: Params,
+              serialization_dir: str,
+              weights_file: str = None,
+              cuda_device: int = -1,
+              **kwargs) -> 'Model':
+        model_params = config.get('model')
+        model_params.update({"on_load": True})
+        config.update({'model': model_params})
+        return super()._load(config=config,
+                             serialization_dir=serialization_dir,
+                             weights_file=weights_file,
+                             cuda_device=cuda_device,
+                             **kwargs)
 
 
 @Model.register("bert_mc_qa_per_choice")
