@@ -142,6 +142,7 @@ class ElasticSearchQARetriever(DocumentRetriever):
     def __init__(self,
                  host: str,
                  port: int = 9200,
+                 aws_credentials: Dict[str, Any] = None,
                  extra_es_args: Dict[str, Any] = None,
                  indices: Union[str, List[str]]= None,
                  query_format: str = "aristo-qa",
@@ -157,7 +158,9 @@ class ElasticSearchQARetriever(DocumentRetriever):
                  cache_save_frequency: int = None,
                  max_cache_size: int = None):
 
-        from elasticsearch import Elasticsearch
+        from elasticsearch import Elasticsearch, RequestsHttpConnection
+        import boto3
+        from requests_aws4auth import AWS4Auth
 
         super().__init__(cache_file_out=cache_file_out,
                          cache_files=cache_files,
@@ -180,11 +183,26 @@ class ElasticSearchQARetriever(DocumentRetriever):
         if dfs_query_then_fetch:
             self._query_args["search_type"] = "dfs_query_then_fetch"
 
+        auth_es_args = {}
+        if aws_credentials is not None:
+            type = aws_credentials.get("source","env")
+            if type != "env":
+                raise NotImplementedError
+            credentials = boto3.Session().get_credentials()
+            region = "us-west-2"  # Hardcoded for now
+            service = "es"
+            awsauth = AWS4Auth(credentials.access_key, credentials.secret_key, region, service)
+            auth_es_args = {'http_auth': awsauth,
+                            'use_ssl': True,
+                            'verify_certs': True,
+                            'connection_class': RequestsHttpConnection}
+
         extra_es_args = extra_es_args or {}
         self._es = Elasticsearch(hosts=[{"host": host, "port": port}],
                                  retries=retries,
-                                 timeout=timeout, **extra_es_args)
-
+                                 timeout=timeout,
+                                 **auth_es_args,
+                                 **extra_es_args)
 
     @overrides
     def _cache_key(self, query: Dict[str, str]):
@@ -214,7 +232,7 @@ class ElasticSearchQARetriever(DocumentRetriever):
             hits = list(filter(lambda x:len(x['_source']['text']) <= self._max_document_length, hits))
         if self._num_retrievals is not None:
             hits = hits[:self._num_retrievals]
-        return [{'score': hit['_score'], 'text': hit['_source']['text']} for hit in hits]
+        return [{'score': hit['_score'], 'text': hit['_source']['text'], "index": hit['_index']} for hit in hits]
 
     @staticmethod
     def construct_qa_query(question, choice="", require_match=True, max_hits=50, max_question_length=None):
