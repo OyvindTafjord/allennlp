@@ -148,7 +148,7 @@ class MultipleChoiceQAPredictor(Predictor):
         # Aristo system format predictions
         labels_scores = zip(return_dict['choice_labels'], outputs['label_probs'])
         choices = [{"label": x, "score": y} for x,y in labels_scores]
-        outputs['predictions'] = {"choices": choices}
+        outputs['prediction'] = {"choices": choices}
 
         if "annotation_attentions" in outputs:
             qr_explanation = get_qr_explanation(outputs, return_dict['annotation_tags'], ATTENTION_CUTOFF)

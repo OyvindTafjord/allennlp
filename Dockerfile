@@ -62,6 +62,7 @@ RUN ./scripts/cache_models.py
 
 # Custom for document_retriever code in bert_exp1 branch
 RUN pip install elasticsearch
+RUN pip install requests_aws4auth
 
 # Optional argument to set an environment variable with the Git SHA
 ARG SOURCE_COMMIT
