@@ -150,10 +150,10 @@ class MultipleChoiceQAPredictor(Predictor):
         choices = [{"label": x, "score": y} for x,y in labels_scores]
         outputs['prediction'] = {"choices": choices}
 
-        if "annotation_attentions" in outputs:
-            qr_explanation = get_qr_explanation(outputs, return_dict['annotation_tags'], ATTENTION_CUTOFF)
-            outputs['qr_explanation'] = qr_explanation
-
         return_dict.update(outputs)
+
+        if "annotation_attentions" in outputs:
+            qr_explanation = get_qr_explanation(return_dict, return_dict['annotation_tags'], ATTENTION_CUTOFF)
+            return_dict['qr_explanation'] = qr_explanation
 
         return sanitize(return_dict)
