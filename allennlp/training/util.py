@@ -191,13 +191,6 @@ def datasets_from_params(params: Params,
         test_data = validation_and_test_dataset_reader.read(test_data_path)
         datasets["test"] = test_data
 
-    # Hack to persist document retriever cache if need be
-    if hasattr(dataset_reader, "document_retriever") and dataset_reader.document_retriever is not None:
-        cfo = dataset_reader.document_retriever._cache_file_out
-        if cfo is not None:
-            logger.info(f"Saving document retriever cache to {cfo}.")
-            dataset_reader.document_retriever.save_cache_file()
-
     return datasets
 
 

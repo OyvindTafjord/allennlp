@@ -203,6 +203,9 @@ class ElasticSearchQARetriever(DocumentRetriever):
                                  timeout=timeout,
                                  **auth_es_args,
                                  **extra_es_args)
+        # Turn off excessive logging from ES calls
+        es_log = logging.getLogger("elasticsearch")
+        es_log.setLevel(logging.CRITICAL)
 
     @overrides
     def _cache_key(self, query: Dict[str, str]):

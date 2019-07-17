@@ -3,11 +3,13 @@ import itertools
 import json
 import logging
 import numpy
+import os
 import re
 
 from overrides import overrides
 
 from allennlp.common.file_utils import cached_path
+from allennlp.common.tqdm import Tqdm
 from allennlp.common.util import JsonDict
 from allennlp.data.dataset_readers.dataset_reader import DatasetReader
 from allennlp.data.document_retriever import combine_sentences, DocumentRetriever
@@ -45,6 +47,7 @@ class BertMCQAReader(DatasetReader):
                  context_syntax: str = "c#q#a",
                  document_retriever: DocumentRetriever = None,
                  context_format: Dict[str, Any] = None,
+                 dataset_dir_out: str = None,
                  dann_mode: bool = False,
                  sample: int = -1) -> None:
         super().__init__()
@@ -66,6 +69,7 @@ class BertMCQAReader(DatasetReader):
         self._annotation_tags = annotation_tags
         self.document_retriever = document_retriever
         self._context_format = context_format
+        self._dataset_dir_out = dataset_dir_out
         self._dann_mode = dann_mode
         if self._annotation_tags is not None:
             self._tokenizer = WordTokenizer()
@@ -75,6 +79,31 @@ class BertMCQAReader(DatasetReader):
 
     @overrides
     def _read(self, file_path: str):
+        self._dataset_cache = None
+        if self._dataset_dir_out is not None:
+            self._dataset_cache = []
+        instances = self._read_internal(file_path)
+        if self.document_retriever is not None:
+            if not isinstance(instances, list):
+                instances = [instance for instance in Tqdm.tqdm(instances)]
+            cfo = self.document_retriever._cache_file_out
+            if cfo is not None:
+                logger.info(f"Saving document retriever cache to {cfo}.")
+                self.document_retriever.save_cache_file()
+        if self._dataset_cache is not None:
+            if not isinstance(instances, list):
+                instances = [instance for instance in Tqdm.tqdm(instances)]
+            if not os.path.exists(self._dataset_dir_out):
+                os.mkdir(self._dataset_dir_out)
+            output_file = os.path.join(self._dataset_dir_out, os.path.basename(file_path))
+            logger.info(f"Saving contextualized dataset to {output_file}.")
+            with open(output_file, 'w') as file:
+                for d in self._dataset_cache:
+                    file.write(json.dumps(d))
+                    file.write("\n")
+        return instances
+
+    def _read_internal(self, file_path: str):
         # if `file_path` is a URL, redirect to the cache
         file_path = cached_path(file_path)
         counter = self._sample + 1
@@ -122,6 +151,8 @@ class BertMCQAReader(DatasetReader):
                 if context is None and self._context_format is not None:
                     choice_text_list = [c['text'] for c in item_json['question']['choices']]
                     context = self._get_q_context(question_text, choice_text_list)
+                    if context is not None:
+                        item_json['para'] = context
                 if self._ignore_context:
                     context = None
                 context_annotations = None
@@ -173,6 +204,8 @@ class BertMCQAReader(DatasetReader):
                     choice_context = choice_item.get("para")
                     if choice_context is None and context is None and self._context_format is not None:
                         choice_context = self._get_qa_context(question_text, choice_text)
+                        if choice_context is not None:
+                            choice_item['para'] = choice_context
 
                     if self._ignore_context:
                         choice_context = None
@@ -208,16 +241,19 @@ class BertMCQAReader(DatasetReader):
                             choice_context,
                             debug)
 
+                if self._dataset_cache is not None:
+                    self._dataset_cache.append(item_json)
+
                 if not any_correct and 'answerKey' in item_json:
                     raise ValueError("No correct answer found for {item_json}!")
 
                 if not self._instance_per_choice:
-                    answer_id = choice_label_to_id[item_json["answerKey"]]
+                    answer_id = choice_label_to_id.get(item_json.get("answerKey"))
                     # Pad choices with empty strings if not right number
                     if len(choice_text_list) != self._num_choices:
                         choice_text_list = (choice_text_list + self._num_choices * [''])[:self._num_choices]
                         choice_context_list = (choice_context_list + self._num_choices * [None])[:self._num_choices]
-                        if answer_id >= self._num_choices:
+                        if answer_id is not None and answer_id >= self._num_choices:
                             logging.warning(f"Skipping question with more than {self._num_choices} answers: {item_json}")
                             continue
 
