@@ -210,8 +210,10 @@ class BertBasicWordSplitter(WordSplitter):
     This is used to split a sentence into words.
     Then the ``BertTokenIndexer`` converts each word into wordpieces.
     """
-    def __init__(self, do_lower_case: bool = True) -> None:
-        self.basic_tokenizer = BertBasicTokenizer(do_lower_case)
+    def __init__(self,
+                 do_lower_case: bool = True,
+                 never_split=("[UNK]", "[SEP]", "[PAD]", "[CLS]", "[MASK]")) -> None:
+        self.basic_tokenizer = BertBasicTokenizer(do_lower_case=do_lower_case, never_split=never_split)
 
     @overrides
     def split_words(self, sentence: str) -> List[Token]:
