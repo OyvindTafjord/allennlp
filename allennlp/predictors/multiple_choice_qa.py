@@ -63,16 +63,32 @@ def get_qr_explanation(res, tags, cutoff):
 def get_top_spans(tokens, attentions, cutoff):
     spans = []
     current_score = 0
-    for token, attention in zip(tokens, attentions):
+    current_len = 0
+    tokens_attentions = list(zip(tokens, attentions))
+    for idx, (token, attention) in enumerate(tokens_attentions):
         if attention > cutoff:
             if current_score == 0:
                 current_score = attention
-                spans.append({"tokens": [token], "score": current_score})
+                current_len = 1
+                tokens = [token]
+                tmp_idx = idx
+                while tmp_idx > 0 and tokens[0].startswith("##"):
+                    tmp_idx -= 1
+                    tokens = [tokens_attentions[tmp_idx][0]] + tokens
+                spans.append({"tokens": tokens, "score": current_score})
             else:
                 current_score += attention
+                current_len += 1
                 spans[-1]['tokens'].append(token)
-                spans[-1]['score'] = current_score
+                spans[-1]['score'] = current_score / current_len
         else:
+            if current_score > 0:
+                tokens = spans[-1]['tokens']
+                tmp_idx = idx
+                while tmp_idx < len(tokens_attentions) and tokens_attentions[tmp_idx][0].startswith("##"):
+                    tokens.append(tokens_attentions[tmp_idx][0])
+                    tmp_idx += 1
+                spans[-1]['tokens'] = tokens
             current_score = 0
     spans.sort(key=lambda x: -x['score'])
     return spans
@@ -102,6 +118,10 @@ class MultipleChoiceQAPredictor(Predictor):
         choice_labels = [choice['label'] for choice in question_data['choices']]
         context = json_dict.get("para")
         choice_context_list = [choice.get('para') for choice in question_data['choices']]
+        if context is None and "<p>" in question_text:
+            context, question_text = question_text.split("<p>", 1)
+            context = context.strip()
+            question_text = question_text.strip()
         no_context = context is None and choice_context_list[0] is None
         if no_context and dataset_reader._context_format is not None:
             context = dataset_reader._get_q_context(question_text, choice_text_list)
