@@ -46,6 +46,7 @@ class BertMCQAReader(DatasetReader):
                  context_strip_sep: str = None,
                  context_syntax: str = "c#q#a",
                  document_retriever: DocumentRetriever = None,
+                 override_context: bool = False,
                  context_format: Dict[str, Any] = None,
                  dataset_dir_out: str = None,
                  dann_mode: bool = False,
@@ -64,6 +65,7 @@ class BertMCQAReader(DatasetReader):
         self._restrict_num_choices = restrict_num_choices
         self._skip_id_regex = skip_id_regex
         self._ignore_context = ignore_context
+        self._override_context = override_context
         self._skip_and_offset = skip_and_offset
         self._context_strip_sep = context_strip_sep
         self._annotation_tags = annotation_tags
@@ -148,7 +150,7 @@ class BertMCQAReader(DatasetReader):
 
                 question_text = item_json["question"]["stem"]
 
-                if context is None and self._context_format is not None:
+                if (context is None or self._override_context) and self._context_format is not None:
                     choice_text_list = [c['text'] for c in item_json['question']['choices']]
                     context = self._get_q_context(question_text, choice_text_list)
                     if context is not None:
@@ -202,7 +204,8 @@ class BertMCQAReader(DatasetReader):
 
                     choice_text = choice_item["text"]
                     choice_context = choice_item.get("para")
-                    if choice_context is None and context is None and self._context_format is not None:
+                    if ((choice_context is None and context is None) or self._override_context) \
+                            and self._context_format is not None:
                         choice_context = self._get_qa_context(question_text, choice_text)
                         if choice_context is not None:
                             choice_item['para'] = choice_context
@@ -371,7 +374,9 @@ class BertMCQAReader(DatasetReader):
             "question_text": question,
             "choice_text_list": choice_list,
             "correct_answer_index": answer_id,
-            "question_tokens_list": qa_tokens_list
+            "question_tokens_list": qa_tokens_list,
+            "context": context,
+            "choice_context_list": choice_context_list
             # "question_tokens": [x.text for x in question_tokens],
             # "choice_tokens_list": [[x.text for x in ct] for ct in choices_tokens_list],
         }
