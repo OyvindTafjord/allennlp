@@ -411,6 +411,23 @@ class BertMCQAReader(DatasetReader):
                                         num=self._context_format.get('num_sentences'),
                                         max_len=self._context_format.get('max_sentence_length'))
             return context
+        elif self._context_format['mode'] == "combine-q-per-a-top1":
+            assert(self.document_retriever is not None)
+            top1 = []
+            rest = []
+            for answer in choice_text_list:
+                hits = self.document_retriever.query({'q': question_text, 'a': answer})
+                if hits:
+                    top1.append(hits[0])
+                    rest += hits[1:]
+            top1.sort(key=lambda x: -x['score'])
+            rest.sort(key=lambda x: -x['score'])
+            sentences = top1 + rest
+            context = combine_sentences(sentences,
+                                        num=self._context_format.get('num_sentences'),
+                                        max_len=self._context_format.get('max_sentence_length'))
+            return context
+
         return None
 
     def _get_qa_context(self, question, answer):
