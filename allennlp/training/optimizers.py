@@ -22,6 +22,7 @@ from typing import List, Any, Dict
 
 import torch
 from pytorch_pretrained_bert.optimization import BertAdam
+from pytorch_transformers.optimization import AdamW
 
 from allennlp.common import Params, Registrable
 
@@ -148,6 +149,7 @@ Registrable._registry[Optimizer] = {   # pylint: disable=protected-access
         "adamax": torch.optim.Adamax,
         "averaged_sgd": torch.optim.ASGD,
         "bert_adam": BertAdam,
+        "adam_w": AdamW,
 }
 
 def _safe_sparse_mask(tensor: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
