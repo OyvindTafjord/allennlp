@@ -61,9 +61,9 @@ class RobertaMCQAModel(Model):
         transformer_config.num_labels = classifier_output_dim
         self._classifier = None
         if transformer_weights_model and hasattr(transformer_model_loaded.model, "_classifier") \
-                and not reset_classifier:
+                and not reset_classifier and not on_load:
             self._classifier = transformer_model_loaded.model._classifier
-            old_dims = (self._classifier.in_features, self._classifier.out_features)
+            old_dims = (self._classifier.dense.in_features, self._classifier.out_proj.out_features)
             new_dims = (classifier_input_dim, classifier_output_dim)
             if old_dims != new_dims:
                 logging.info(f"NOT copying Transformer classifier weights, incompatible dims: {old_dims} vs {new_dims}")
