@@ -3,6 +3,7 @@ import logging
 
 from overrides import overrides
 from pytorch_transformers.tokenization_auto import AutoTokenizer
+from pytorch_transformers.tokenization_roberta import RobertaTokenizer
 import torch
 
 from allennlp.common.util import pad_sequence_to_length
@@ -48,9 +49,14 @@ class PretrainedTransformerIndexer(TokenIndexer[int]):
         elif model_name.endswith("-uncased") and not do_lowercase:
             logger.warning("Your pretrained model appears to be uncased, "
                            "but your indexer is not lowercasing tokens.")
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name, do_lower_case=do_lowercase)
+        if "roberta" in model_name:
+            self.tokenizer = RobertaTokenizer.from_pretrained(model_name, do_lower_case=do_lowercase)
+        else:
+            self.tokenizer = AutoTokenizer.from_pretrained(model_name, do_lower_case=do_lowercase)
         self._namespace = namespace
         self._added_to_vocabulary = False
+        self._padding_value = self.tokenizer.convert_tokens_to_ids([self.tokenizer.pad_token])[0]
+        logger.info(f"Using token indexer padding value of {self._padding_value}")
 
     @overrides
     def count_vocab_items(self, token: Token, counter: Dict[str, Dict[str, int]]):
@@ -68,7 +74,7 @@ class PretrainedTransformerIndexer(TokenIndexer[int]):
                           tokens: List[Token],
                           vocabulary: Vocabulary,
                           index_name: str) -> Dict[str, List[int]]:
-        if not self._added_to_vocabulary:
+        if not self._added_to_vocabulary and hasattr(self.tokenizer, "vocab"):
             self._add_encoding_to_vocabulary(vocabulary)
             self._added_to_vocabulary = True
         token_text = [token.text for token in tokens]
@@ -85,5 +91,7 @@ class PretrainedTransformerIndexer(TokenIndexer[int]):
                          tokens: Dict[str, List[int]],
                          desired_num_tokens: Dict[str, int],
                          padding_lengths: Dict[str, int]) -> Dict[str, torch.Tensor]:  # pylint: disable=unused-argument
-        return {key: torch.LongTensor(pad_sequence_to_length(val, desired_num_tokens[key]))
+        return {key: torch.LongTensor(pad_sequence_to_length(val,
+                                                             desired_num_tokens[key],
+                                                             default_value=lambda: self._padding_value))
                 for key, val in tokens.items()}
