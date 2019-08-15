@@ -229,6 +229,7 @@ def train_model(params: Params,
                 validation_iterator=pieces.validation_iterator)
 
         evaluation_iterator = pieces.validation_iterator or pieces.iterator
+        validation_dataset = pieces.validation_dataset
         evaluation_dataset = pieces.test_dataset
 
     else:
