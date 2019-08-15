@@ -8,6 +8,7 @@ from allennlp import __version__
 from allennlp.commands.configure import Configure
 from allennlp.commands.elmo import Elmo
 from allennlp.commands.evaluate import Evaluate
+from allennlp.commands.evaluate_custom import EvaluateCustom
 from allennlp.commands.fine_tune import FineTune
 from allennlp.commands.make_vocab import MakeVocab
 from allennlp.commands.predict import Predict
@@ -67,6 +68,7 @@ def main(prog: str = None,
             "configure": Configure(),
             "train": Train(),
             "evaluate": Evaluate(),
+            "evaluate_custom": EvaluateCustom(),
             "predict": Predict(),
             "make-vocab": MakeVocab(),
             "elmo": Elmo(),

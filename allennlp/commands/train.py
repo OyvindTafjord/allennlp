@@ -38,6 +38,7 @@ import argparse
 import logging
 import os
 
+from allennlp.commands.evaluate_custom import evaluate_custom
 from allennlp.commands.subcommand import Subcommand
 from allennlp.common.checks import check_for_gpu
 from allennlp.common import Params
@@ -207,6 +208,7 @@ def train_model(params: Params,
     params.to_file(os.path.join(serialization_dir, CONFIG_NAME))
 
     evaluate_on_test = params.pop_bool("evaluate_on_test", False)
+    evaluate_custom_params = params.pop("evaluate_custom", None)
 
     trainer_type = params.get("trainer", {}).get("type", "default")
 
@@ -252,7 +254,7 @@ def train_model(params: Params,
         raise
 
     # Evaluate
-    if evaluation_dataset and evaluate_on_test:
+    if evaluation_dataset and evaluate_on_test and evaluate_custom_params is None:
         logger.info("The model will be evaluated using the best epoch weights.")
         test_metrics = evaluate(trainer.model, evaluation_dataset, evaluation_iterator,
                                 cuda_device=trainer._cuda_devices[0],  # pylint: disable=protected-access,
@@ -270,6 +272,31 @@ def train_model(params: Params,
 
     # Now tar up results
     archive_model(serialization_dir, files_to_archive=params.files_to_archive)
+
+    if evaluate_custom_params is not None:
+        metadata_fields = evaluate_custom_params.get('metadata_fields')
+        if isinstance(metadata_fields, list):
+            metadata_fields = ",".join(metadata_fields)
+        output_file = os.path.join(serialization_dir, "eval_validation.jsonl")
+        validation_metrics = evaluate_custom(trainer.model,
+                                             validation_dataset,
+                                             evaluation_iterator,
+                                             cuda_device=trainer._cuda_devices[0],
+                                             output_file=output_file,
+                                             metadata_fields=metadata_fields)
+        for key, value in validation_metrics.items():
+            metrics["eval_validation_" + key] = value
+        if evaluation_dataset and evaluate_on_test:
+            output_file = os.path.join(serialization_dir, "eval_test.jsonl")
+            test_metrics = evaluate_custom(trainer.model,
+                                           evaluation_dataset,
+                                           evaluation_iterator,
+                                           cuda_device=trainer._cuda_devices[0],
+                                           output_file=output_file,
+                                           metadata_fields=metadata_fields)
+            for key, value in test_metrics.items():
+                metrics["eval_test_" + key] = value
+
     dump_metrics(os.path.join(serialization_dir, "metrics.json"), metrics, log=True)
 
     # We count on the trainer to have the model with best weights
