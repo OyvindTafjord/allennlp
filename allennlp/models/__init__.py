@@ -34,3 +34,6 @@ from allennlp.models.bidirectional_lm import BidirectionalLanguageModel
 from allennlp.models.language_model import LanguageModel
 from allennlp.models.basic_classifier import BasicClassifier
 from allennlp.models.srl_bert import SrlBert
+from allennlp.models.transformer_mc.bert_models import BertMCQAModel
+from allennlp.models.transformer_mc.xlnet_models import XLNetMCQAModel
+from allennlp.models.transformer_mc.roberta_models import RobertaMCQAModel
