@@ -38,6 +38,10 @@ RUN apt-get update --fix-missing && apt-get install -y \
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 
+# To adjust pytorch-transformers version without having to reinstall all requirements
+RUN pip uninstall -y pytorch-transformers
+RUN pip install git+git://github.com/huggingface/pytorch-transformers.git@572dcfd1db0bc18fbce8c14cef82de41fdae2465
+
 COPY scripts/ scripts/
 COPY allennlp/ allennlp/
 COPY pytest.ini pytest.ini
