@@ -60,8 +60,9 @@ class RobertaMCQAModel(Model):
         classifier_output_dim = 1
         transformer_config.num_labels = classifier_output_dim
         self._classifier = None
-        if transformer_weights_model and hasattr(transformer_model_loaded.model, "_classifier") \
-                and not reset_classifier and not on_load:
+        if not on_load and transformer_weights_model \
+                and hasattr(transformer_model_loaded.model, "_classifier") \
+                and not reset_classifier:
             self._classifier = transformer_model_loaded.model._classifier
             old_dims = (self._classifier.dense.in_features, self._classifier.out_proj.out_features)
             new_dims = (classifier_input_dim, classifier_output_dim)
