@@ -12,6 +12,7 @@ from allennlp.common.file_utils import cached_path
 from allennlp.common.tqdm import Tqdm
 from allennlp.common.util import JsonDict
 from allennlp.data.dataset_readers.dataset_reader import DatasetReader
+from allennlp.data.document_retriever import combine_sentences, DocumentRetriever
 from allennlp.data.fields import ArrayField, Field, TextField, LabelField
 from allennlp.data.fields import ListField, MetadataField, SequenceLabelField
 from allennlp.data.instance import Instance
@@ -20,9 +21,6 @@ from allennlp.data.tokenizers import Token, PretrainedTransformerTokenizer
 
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
 # TagSpanType = ((int, int), str)
-
-combine_sentences = None
-DocumentRetriever = None
 
 @DatasetReader.register("transformer_mc_qa")
 class TransformerMCQAReader(DatasetReader):
