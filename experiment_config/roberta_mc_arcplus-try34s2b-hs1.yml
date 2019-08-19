@@ -1,0 +1,27 @@
+description: OBQA-IR10V8c, Roberta-large+RACE-try1+ARC-RegLivEnv-IR10V2, $$HSID$$
+tasks:
+  - spec:
+      image: allennlpTransformersV12
+      resultPath: /output
+      args:
+        - python
+        - '-m'
+        - allennlp.run
+        - train
+        - /config.json
+        - '-s'
+        - /output
+        - '--file-friendly-logging'
+      datasetMounts:
+        - datasetId: ds_0br69ce61d5c
+          containerPath: /inputs/ARC-OBQA-RegLivEnv
+        - datasetId: ds_e93cyars774c
+          containerPath: /caches/ESCache-OBQA-IR10V8c.jsonl.gz
+        - datasetId: ds_o2o6mz14n8fr
+          subPath: model.tar.gz
+          containerPath: /models/model.tar.gz
+        - datasetId: $$DS_CONFIG$$
+          containerPath: /config.json
+      requirements:
+        gpuCount: 1
+        preemptible: true

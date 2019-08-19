@@ -61,7 +61,8 @@ class XLNetMCQAModel(Model):
         classifier_input_dim = self._output_dim
         classifier_output_dim = 1
         self._classifier = None
-        if transformer_weights_model and hasattr(transformer_model_loaded.model, "_classifier") \
+        if not on_load and transformer_weights_model \
+                and hasattr(transformer_model_loaded.model, "_classifier") \
                 and not reset_classifier:
             self._classifier = transformer_model_loaded.model._classifier
             old_dims = (self._classifier.in_features, self._classifier.out_features)
@@ -75,6 +76,7 @@ class XLNetMCQAModel(Model):
 
         self._accuracy = CategoricalAccuracy()
         self._loss = torch.nn.CrossEntropyLoss()
+        self._padding_value = 1  # The index of the XLNet padding token
         self._debug = 2
 
     def forward(self,
@@ -89,7 +91,7 @@ class XLNetMCQAModel(Model):
         batch_size = input_ids.size(0)
         num_choices = input_ids.size(1)
 
-        question_mask = (input_ids != 0).long()
+        question_mask = (input_ids != self._padding_value).long()
 
         if self._debug > 0:
             print(f"batch_size = {batch_size}")

@@ -75,7 +75,7 @@ class RobertaMCQAModel(Model):
         self._accuracy = CategoricalAccuracy()
         self._loss = torch.nn.CrossEntropyLoss()
         self._debug = 2
-        self._padding_value = 1
+        self._padding_value = 1  # The index of the RoBERTa padding token
 
     def forward(self,
                 question: Dict[str, torch.LongTensor],

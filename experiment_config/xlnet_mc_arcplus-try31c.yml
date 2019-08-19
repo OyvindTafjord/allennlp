@@ -1,0 +1,24 @@
+description: ARC-OBQA-RegLivEnv-IR10V2, XLNet-large-cased+RACE-try1, hp tweaks
+tasks:
+  - spec:
+      image: allennlpTransformersV12
+      resultPath: /output
+      args:
+        - python
+        - '-m'
+        - allennlp.run
+        - train
+        - /config.json
+        - '-s'
+        - /output
+        - '--file-friendly-logging'
+      datasetMounts:
+        - datasetId: ds_93rplie1db4t
+          containerPath: /inputs/ARC-OBQA-RegLivEnv-IR10V2
+        - datasetId: ds_cb9nfchrfjwg
+          containerPath: /models/xlnet_mc_race-try1-model.tar.gz
+        - datasetId: ds_n10nu9ms24v3
+          containerPath: /config.json
+      requirements:
+        gpuCount: 1
+        preemptible: true
