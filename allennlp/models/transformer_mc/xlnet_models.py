@@ -76,7 +76,7 @@ class XLNetMCQAModel(Model):
 
         self._accuracy = CategoricalAccuracy()
         self._loss = torch.nn.CrossEntropyLoss()
-        self._padding_value = 1  # The index of the XLNet padding token
+        self._padding_value = 5  # The index of the XLNet padding token
         self._debug = 2
 
     def forward(self,
