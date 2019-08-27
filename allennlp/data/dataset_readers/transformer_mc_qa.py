@@ -440,7 +440,7 @@ class TransformerMCQAReader(DatasetReader):
         Truncate context_tokens first, from the left, then question_tokens and choice_tokens
         """
         max_context_len = max_length - len(question_tokens) - len(choice_tokens)
-        if max_context_len >= 0:
+        if max_context_len > 0:
             if len(context_tokens) > max_context_len:
                 context_tokens = context_tokens[-max_context_len:]
         else:
