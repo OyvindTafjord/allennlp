@@ -15,6 +15,7 @@ from allennlp.predictors.coref import CorefPredictor
 from allennlp.predictors.decomposable_attention import DecomposableAttentionPredictor
 from allennlp.predictors.dialog_qa import DialogQAPredictor
 from allennlp.predictors.event2mind import Event2MindPredictor
+from allennlp.predictors.multiple_choice_qa import MultipleChoiceQAPredictor
 from allennlp.predictors.nlvr_parser import NlvrParserPredictor
 from allennlp.predictors.open_information_extraction import OpenIePredictor
 from allennlp.predictors.quarel_parser import QuarelParserPredictor
