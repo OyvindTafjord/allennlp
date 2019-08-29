@@ -4,7 +4,7 @@ from overrides import overrides
 
 from allennlp.common.util import JsonDict, sanitize
 from allennlp.data import Instance
-from allennlp.data.dataset_readers import BertMCQAReader
+from allennlp.data.dataset_readers import TransformerMCQAReader
 from allennlp.predictors.predictor import Predictor
 
 # Some util functions which can be moved out
@@ -104,7 +104,7 @@ class MultipleChoiceQAPredictor(Predictor):
         """
 
         # Make a cast here to satisfy mypy
-        dataset_reader = cast(BertMCQAReader, self._dataset_reader)
+        dataset_reader = cast(TransformerMCQAReader, self._dataset_reader)
 
         question_raw = json_dict['question']
         question_mc = None
