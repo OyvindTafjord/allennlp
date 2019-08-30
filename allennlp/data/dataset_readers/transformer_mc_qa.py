@@ -525,7 +525,7 @@ class TransformerMCQAReader(DatasetReader):
         answer = self._add_prefix.get("a",  "") + answer
         question_tokens = self._tokenizer.tokenize(question)
         if context is not None:
-            context = self._add_prefix.get("c", "") + question
+            context = self._add_prefix.get("c", "") + context
             context_tokens = self._tokenizer.tokenize(context)
         else:
             context_tokens = []
