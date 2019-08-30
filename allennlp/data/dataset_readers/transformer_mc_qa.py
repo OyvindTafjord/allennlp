@@ -44,6 +44,7 @@ class TransformerMCQAReader(DatasetReader):
                  annotation_tags: List[str] = None,
                  context_strip_sep: str = None,
                  context_syntax: str = "c#q#_a!",
+                 add_prefix: Dict[str, str] = None,
                  document_retriever: DocumentRetriever = None,
                  override_context: bool = False,
                  context_format: Dict[str, Any] = None,
@@ -80,6 +81,7 @@ class TransformerMCQAReader(DatasetReader):
         self._dataset_dir_out = dataset_dir_out
         self._dann_mode = dann_mode
         self._model_type = model_type
+        self._add_prefix = {} or add_prefix
         if model_type is None:
             for model in ["roberta", "bert", "openai-gpt", "gpt2", "transfo-xl", "xlnet", "xlm"]:
                 if model in pretrained_model:
@@ -519,8 +521,11 @@ class TransformerMCQAReader(DatasetReader):
         #pad_on_left = bool(self._model_type in ['xlnet'])
         #pad_token_segment_id = 4 if self._model_type in ['xlnet'] else 0
         #pad_token_val=self._tokenizer.encoder[pad_token] if self._model_type in ['roberta'] else self._tokenizer.vocab[pad_token]
+        question = self._add_prefix.get("q", "") + question
+        answer = self._add_prefix.get("a",  "") + answer
         question_tokens = self._tokenizer.tokenize(question)
         if context is not None:
+            context = self._add_prefix.get("c", "") + question
             context_tokens = self._tokenizer.tokenize(context)
         else:
             context_tokens = []
