@@ -81,7 +81,7 @@ class TransformerMCQAReader(DatasetReader):
         self._dataset_dir_out = dataset_dir_out
         self._dann_mode = dann_mode
         self._model_type = model_type
-        self._add_prefix = {} or add_prefix
+        self._add_prefix = add_prefix or {}
         if model_type is None:
             for model in ["roberta", "bert", "openai-gpt", "gpt2", "transfo-xl", "xlnet", "xlm"]:
                 if model in pretrained_model:
