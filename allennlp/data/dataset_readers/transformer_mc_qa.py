@@ -12,7 +12,7 @@ from allennlp.common.file_utils import cached_path
 from allennlp.common.tqdm import Tqdm
 from allennlp.common.util import JsonDict
 from allennlp.data.dataset_readers.dataset_reader import DatasetReader
-from allennlp.data.document_retriever import combine_sentences, DocumentRetriever
+from allennlp.data.document_retriever import combine_sentences, list_sentences, DocumentRetriever
 from allennlp.data.fields import ArrayField, Field, TextField, LabelField
 from allennlp.data.fields import ListField, MetadataField, SequenceLabelField
 from allennlp.data.instance import Instance
@@ -274,17 +274,35 @@ class TransformerMCQAReader(DatasetReader):
                             logging.warning(f"Skipping question with more than {self._num_choices} answers: {item_json}")
                             continue
 
-                    yield self.text_to_instance(
-                        item_id=item_id,
-                        question=question_text,
-                        choice_list=choice_text_list,
-                        answer_id=answer_id,
-                        context=context,
-                        choice_context_list=choice_context_list,
-                        context_annotations=context_annotations,
-                        question_stem_annotations=question_stem_annotations,
-                        choice_annotations_list=choice_annotations_list,
-                        debug=debug)
+                    # Custom hack for splitting question instances
+                    if self._context_format is not None and choice_context_list is not None \
+                            and self._context_format['mode'] == "split-q-per-sent":
+                        instances = self._split_instance_per_context(
+                            item_id=item_id,
+                            question=question_text,
+                            choice_list=choice_text_list,
+                            answer_id=answer_id,
+                            context=context,
+                            choice_context_list=choice_context_list,
+                            context_annotations=context_annotations,
+                            question_stem_annotations=question_stem_annotations,
+                            choice_annotations_list=choice_annotations_list,
+                            debug=debug)
+                        for instance in instances:
+                            yield instance
+
+                    else:
+                        yield self.text_to_instance(
+                            item_id=item_id,
+                            question=question_text,
+                            choice_list=choice_text_list,
+                            answer_id=answer_id,
+                            context=context,
+                            choice_context_list=choice_context_list,
+                            context_annotations=context_annotations,
+                            question_stem_annotations=question_stem_annotations,
+                            choice_annotations_list=choice_annotations_list,
+                            debug=debug)
 
     @overrides
     def text_to_instance(self,  # type: ignore
@@ -380,6 +398,7 @@ class TransformerMCQAReader(DatasetReader):
 
     def _get_q_context(self, question_text, choice_text_list):
         if self._context_format['mode'] == "concat-q-all-a":
+            # Concatenate q + all questions to query single context
             assert(self.document_retriever is not None)
             query = " ".join([question_text] + choice_text_list)
             sentences = self.document_retriever.query({'q': query})
@@ -388,6 +407,7 @@ class TransformerMCQAReader(DatasetReader):
                                         max_len=self._context_format.get('max_sentence_length'))
             return context
         elif self._context_format['mode'] == "combine-q-per-a-top1":
+            # Combine q+a contexts from each answers to single question context
             assert(self.document_retriever is not None)
             top1 = []
             rest = []
@@ -407,14 +427,59 @@ class TransformerMCQAReader(DatasetReader):
         return None
 
     def _get_qa_context(self, question, answer):
-        if self._context_format['mode'] != "concat":
+        if self._context_format['mode'] == "concat":
+
+            assert(self.document_retriever is not None)
+            hits = self.document_retriever.query({'q': question, 'a': answer})
+            context = combine_sentences(hits,
+                                        num=self._context_format.get('num_sentences'),
+                                        max_len=self._context_format.get('max_sentence_length'))
+            return context
+        elif self._context_format['mode'] == "split-q-per-sent":
+            hits = self.document_retriever.query({'q': question, 'a': answer})
+            sentences = list_sentences(hits,
+                                       num=self._context_format.get('num_sentences'),
+                                       max_len=self._context_format.get('max_sentence_length'))
+            return sentences
+        else:
             return None
-        assert(self.document_retriever is not None)
-        sentences = self.document_retriever.query({'q': question, 'a': answer})
-        context = combine_sentences(sentences,
-                                    num=self._context_format.get('num_sentences'),
-                                    max_len=self._context_format.get('max_sentence_length'))
-        return context
+
+    def _split_instance_per_context(self,  # type: ignore
+                                    item_id: str,
+                                    question: str,
+                                    choice_list: List[str],
+                                    answer_id: int = None,
+                                    context: str = None,
+                                    choice_context_list: List[List[str]] = None,
+                                    context_annotations = None,
+                                    question_stem_annotations = None,
+                                    choice_annotations_list = None,
+                                    debug: int = -1) -> List[Instance]:
+        num_splits = self._context_format.get('num_sentences')
+        new_choice_context_list = []
+        for choice_context in choice_context_list:
+            if choice_context is None or len(choice_context) == 0:
+                choice_context = [None]
+            elif isinstance(choice_context, str):
+                choice_context = [choice_context]
+            if len(choice_context) < num_splits:
+                choice_context = (choice_context + [None] * num_splits)[:num_splits]
+            new_choice_context_list.append(choice_context)
+        res = []
+        for idx, choice_context_list1 in enumerate(zip(*new_choice_context_list)):
+            new_item_id = f"{item_id}-context{idx}"
+            res.append(self.text_to_instance(
+                item_id=new_item_id,
+                question=question,
+                choice_list=choice_list,
+                answer_id=answer_id,
+                context=context,
+                choice_context_list=choice_context_list1,
+                context_annotations=context_annotations,
+                question_stem_annotations=question_stem_annotations,
+                choice_annotations_list=choice_annotations_list,
+                debug=debug))
+        return res
 
     # Returns list of (offset, label) for registered tags
     def _get_tagged_spans(self, json):

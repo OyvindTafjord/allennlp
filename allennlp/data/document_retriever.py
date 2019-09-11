@@ -27,7 +27,7 @@ def basic_string_hash(string):
     return "".join(re.findall(r'[a-z]+', string.lower()))
 
 
-def combine_sentences(hits, num: int = None, max_len: int = None) -> str:
+def list_sentences(hits, num: int = None, max_len: int = None) -> str:
     # Assume already sorted by score
     sentences = [hit["text"] for hit in hits]
     sentences = unique(sentences, basic_string_hash)
@@ -41,6 +41,12 @@ def combine_sentences(hits, num: int = None, max_len: int = None) -> str:
         if re.match(r'.*\w$', new):
             new = new + "."
         sentences_processed.append(new)
+    return sentences_processed
+    output = " ".join(reversed(sentences_processed))
+    return output
+
+def combine_sentences(hits, num: int = None, max_len: int = None) -> str:
+    sentences_processed = list_sentences(hits, num, max_len)
     output = " ".join(reversed(sentences_processed))
     return output
 
