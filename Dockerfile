@@ -38,10 +38,6 @@ RUN apt-get update --fix-missing && apt-get install -y \
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 
-# To adjust pytorch-transformers version without having to reinstall all requirements
-RUN pip uninstall -y pytorch-transformers
-RUN pip install pytorch-transformers==1.2.0
-
 # Custom for document_retriever code in transf-exp1 branch
 RUN pip install elasticsearch
 RUN pip install requests_aws4auth
@@ -56,6 +52,10 @@ COPY setup.py setup.py
 COPY README.md README.md
 
 RUN pip install --editable .
+
+# To adjust pytorch-transformers version without having to reinstall all requirements
+RUN pip uninstall -y pytorch-transformers
+RUN pip install pytorch-transformers==1.2.0
 
 # Compile EVALB - required for parsing evaluation.
 # EVALB produces scary looking c-level output which we don't
