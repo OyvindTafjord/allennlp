@@ -40,7 +40,7 @@ RUN pip install -r requirements.txt
 
 # To adjust pytorch-transformers version without having to reinstall all requirements
 RUN pip uninstall -y pytorch-transformers
-RUN pip install git+git://github.com/huggingface/pytorch-transformers.git@d8923270e6c497862f990a3c72e40cc1ddd01d4e
+RUN pip install pytorch-transformers==1.2.0
 
 # Custom for document_retriever code in transf-exp1 branch
 RUN pip install elasticsearch
