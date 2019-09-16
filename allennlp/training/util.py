@@ -337,7 +337,7 @@ def data_parallel(batch_group: List[TensorDict],
     return {'loss': losses.mean()}
 
 def enable_gradient_clipping(model: Model, grad_clipping: Optional[float]) -> None:
-    if grad_clipping is not None:
+    if grad_clipping is not None and grad_clipping > 0:
         for parameter in model.parameters():
             if parameter.requires_grad:
                 parameter.register_hook(lambda grad: nn_util.clamp_tensor(grad,
