@@ -153,7 +153,7 @@ class RobertaMCQAModel(Model):
 
 
 @Model.register("roberta_classifier")
-class RobertaMCQAModel(Model):
+class RobertaClassifierModel(Model):
     """
 
     """
