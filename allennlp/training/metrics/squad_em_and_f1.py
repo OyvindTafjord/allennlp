@@ -37,6 +37,7 @@ class SquadEmAndF1(Metric):
         self._total_em += exact_match
         self._total_f1 += f1_score
         self._count += 1
+        return exact_match, f1_score
 
     @overrides
     def get_metric(self, reset: bool = False) -> Tuple[float, float]:

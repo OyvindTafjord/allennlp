@@ -402,6 +402,8 @@ class RobertaSpanPredictionModel(Model):
         # Compute the EM and F1 on SQuAD and add the tokenized input to the output.
         if metadata is not None:
             output_dict['best_span_str'] = []
+            output_dict['exact_match'] = []
+            output_dict['f1_score'] = []
             tokens_texts = []
             for i in range(batch_size):
                 tokens_text = metadata[i]['tokens']
@@ -413,8 +415,12 @@ class RobertaSpanPredictionModel(Model):
                 best_span_string = self.convert_tokens_to_string(predicted_tokens)
                 output_dict['best_span_str'].append(best_span_string)
                 answer_texts = metadata[i].get('answer_texts', [])
+                exact_match = 0
+                f1_score = 0
                 if answer_texts:
-                    self._squad_metrics(best_span_string, answer_texts)
+                    exact_match, f1_score = self._squad_metrics(best_span_string, answer_texts)
+                output_dict['exact_match'].append(exact_match)
+                output_dict['f1_score'].append(f1_score)
             output_dict['tokens_texts'] = tokens_texts
 
         if self._debug > 0:
