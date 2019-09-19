@@ -176,6 +176,9 @@ class TransformerSpanPredictionReader(DatasetReader):
                     paragraph_text = paragraph["context"]
                 elif self._syntax == "ropes":
                     paragraph_text = paragraph["background"]
+                else:
+                    raise ValueError(f"Invalid dataset syntax {self._syntax}!")
+
                 paragraph_text = self._add_prefix.get("c", "") + paragraph_text
                 if self._ignore_main_context:
                     paragraph_text = ""
@@ -183,8 +186,6 @@ class TransformerSpanPredictionReader(DatasetReader):
                         situation_text = paragraph["situation"]
                         situation_text = self._add_prefix.get("s", "") + situation_text
                         paragraph_text = paragraph_text + " " + situation_text
-                else:
-                    raise ValueError(f"Invalid dataset syntax {self._syntax}!")
 
                 doc_tokens = []
                 char_to_word_offset = []
