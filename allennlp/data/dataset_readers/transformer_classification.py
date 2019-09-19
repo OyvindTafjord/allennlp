@@ -44,9 +44,12 @@ class TransformerClassificationReader(DatasetReader):
                  context_format: Dict[str, Any] = None,
                  dataset_dir_out: str = None,
                  model_type: str = None,
+                 do_lowercase: bool = None,
                  sample: int = -1) -> None:
         super().__init__()
-        do_lowercase = not '-cased' in pretrained_model
+        if do_lowercase is None:
+            do_lowercase = '-uncased' in pretrained_model
+
         self._tokenizer = PretrainedTransformerTokenizer(pretrained_model,
                                                          do_lowercase=do_lowercase,
                                                          start_tokens = [],
