@@ -115,6 +115,33 @@ class TransformerSpanPredictionReader(DatasetReader):
                 example=example,
                 debug=debug)
 
+    @overrides
+    def text_to_instance(self,  # type: ignore
+                         question: str,
+                         background: str,
+                         situation: str = None,
+                         item_id: str = "NA",
+                         debug: int = -1) -> Instance:
+        # For use by predictor, does not support answer input atm
+        paragraph_text = self._add_prefix.get("c", "") + background
+        if self._ignore_main_context:
+            paragraph_text = ""
+        if situation and not self._ignore_situation_context:
+            situation_context = self._add_prefix.get("s", "") + situation
+            paragraph_text = paragraph_text + " " + situation_context
+        question_text = self._add_prefix.get("q", "") + question
+        # We're splitting into subtokens later anyway
+        doc_tokens = [paragraph_text]
+        question_tokens = [question_text]
+
+        example = SpanPredictionExample(
+            qas_id=item_id,
+            doc_text=paragraph_text,
+            question_text=question_text,
+            doc_tokens=doc_tokens,
+            question_tokens=question_tokens)
+        return self._example_to_instance(example, debug)
+
 
     def _example_to_instance(self, example, debug):
         fields: Dict[str, Field] = {}

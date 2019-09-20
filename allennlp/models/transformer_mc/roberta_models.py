@@ -375,7 +375,11 @@ class RobertaSpanPredictionModel(Model):
         span_start_logits = util.replace_masked_values(start_logits, tokens_mask, -1e7)
         span_end_logits = util.replace_masked_values(end_logits, tokens_mask, -1e7)
         best_span = get_best_span(span_start_logits, span_end_logits)
+        span_start_probs = util.masked_softmax(span_start_logits, tokens_mask)
+        span_end_probs = util.masked_softmax(span_end_logits, tokens_mask)
         output_dict = {"start_logits": start_logits, "end_logits": end_logits, "best_span": best_span}
+        output_dict["start_probs"] = span_start_probs
+        output_dict["end_probs"] = span_end_probs
 
         if start_positions is not None and end_positions is not None:
             # If we are on multi-GPU, split add a dimension
