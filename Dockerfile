@@ -53,10 +53,6 @@ COPY README.md README.md
 
 RUN pip install --editable .
 
-# To adjust pytorch-transformers version without having to reinstall all requirements
-RUN pip uninstall -y pytorch-transformers
-RUN pip install pytorch-transformers==1.2.0
-
 # Compile EVALB - required for parsing evaluation.
 # EVALB produces scary looking c-level output which we don't
 # care about, so we redirect the output to /dev/null.
