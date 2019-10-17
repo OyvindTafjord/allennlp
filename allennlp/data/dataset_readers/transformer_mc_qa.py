@@ -401,9 +401,18 @@ class TransformerMCQAReader(DatasetReader):
 
     def _get_q_context(self, question_text, choice_text_list):
         if self._context_format['mode'] == "concat-q-all-a":
-            # Concatenate q + all questions to query single context
+            # Concatenate q + all answers to query single context
             assert(self.document_retriever is not None)
             query = " ".join([question_text] + choice_text_list)
+            sentences = self.document_retriever.query({'q': query})
+            context = combine_sentences(sentences,
+                                        num=self._context_format.get('num_sentences'),
+                                        max_len=self._context_format.get('max_sentence_length'))
+            return context
+        if self._context_format['mode'] == "concat-q-stem":
+            # Only use question stem for query
+            assert(self.document_retriever is not None)
+            query = question_text
             sentences = self.document_retriever.query({'q': query})
             context = combine_sentences(sentences,
                                         num=self._context_format.get('num_sentences'),
