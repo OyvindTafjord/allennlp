@@ -166,7 +166,15 @@ class FBetaMeasure(Metric):
         If ``self.average`` is not ``None``, you will get ``float`` instead of ``List[float]``.
         """
         if self._true_positive_sum is None:
-            raise RuntimeError("You never call this metric before.")
+            # Workaround
+            if reset:
+                self.reset()
+            return {
+                "precision": [0.0],
+                "recall": [0.0],
+                "fscore": [0.0]
+            }
+            # raise RuntimeError("You never call this metric before.")
 
         tp_sum = self._true_positive_sum
         pred_sum = self._pred_sum
