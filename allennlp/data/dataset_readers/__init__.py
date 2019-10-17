@@ -42,3 +42,4 @@ from allennlp.data.dataset_readers.text_classification_json import TextClassific
 from allennlp.data.dataset_readers.transformer_classification import TransformerClassificationReader
 from allennlp.data.dataset_readers.transformer_mc_qa import TransformerMCQAReader
 from allennlp.data.dataset_readers.transformer_span_prediction import TransformerSpanPredictionReader
+from allennlp.data.dataset_readers.transformer_tagger import TransformerTaggerReader

@@ -15,7 +15,7 @@ from allennlp.models.archival import load_archive
 from allennlp.models.model import Model
 from allennlp.models.reading_comprehension.util import get_best_span
 from allennlp.nn import RegularizerApplicator, util
-from allennlp.training.metrics import BooleanAccuracy, CategoricalAccuracy, SquadEmAndF1
+from allennlp.training.metrics import BooleanAccuracy, CategoricalAccuracy, F1Measure, SquadEmAndF1
 
 
 @Model.register("roberta_mc_qa")
@@ -347,13 +347,11 @@ class RobertaSpanPredictionModel(Model):
         input_ids = tokens['tokens']
 
         batch_size = input_ids.size(0)
-        num_choices = input_ids.size(1)
 
         tokens_mask = (input_ids != self._padding_value).long()
 
         if self._debug > 0:
             print(f"batch_size = {batch_size}")
-            print(f"num_choices = {num_choices}")
             print(f"tokens_mask = {tokens_mask}")
             print(f"input_ids.size() = {input_ids.size()}")
             print(f"input_ids = {input_ids}")
@@ -446,6 +444,182 @@ class RobertaSpanPredictionModel(Model):
             'span_acc': self._span_accuracy.get_metric(reset),
             'em': exact_match,
             'f1': f1_score,
+        }
+
+    @classmethod
+    def _load(cls,
+              config: Params,
+              serialization_dir: str,
+              weights_file: str = None,
+              cuda_device: int = -1,
+              **kwargs) -> 'Model':
+        model_params = config.get('model')
+        model_params.update({"on_load": True})
+        config.update({'model': model_params})
+        return super()._load(config=config,
+                             serialization_dir=serialization_dir,
+                             weights_file=weights_file,
+                             cuda_device=cuda_device,
+                             **kwargs)
+
+
+class RobertaTokenClassificationHead(torch.nn.Module):
+    """Head for token-level classification tasks."""
+
+    def __init__(self, config, num_labels):
+        super(RobertaTokenClassificationHead, self).__init__()
+        self.dense = torch.nn.Linear(config.hidden_size, config.hidden_size)
+        self.dropout = torch.nn.Dropout(config.hidden_dropout_prob)
+        self.out_proj = torch.nn.Linear(config.hidden_size, num_labels)
+
+    def forward(self, features, **kwargs):
+        x = features
+        # x = self.dropout(x)
+        x = self.dense(x)
+        x = torch.tanh(x)
+        x = self.dropout(x)
+        x = self.out_proj(x)
+        return x
+
+
+@Model.register("roberta_tagger")
+class RobertaTaggerModel(Model):
+    """
+
+    """
+    def __init__(self,
+                 vocab: Vocabulary,
+                 pretrained_model: str = None,
+                 requires_grad: bool = True,
+                 num_labels: int = None,
+                 transformer_weights_model: str = None,
+                 classifier_head: str = None,
+                 reset_classifier: bool = False,
+                 layer_freeze_regexes: List[str] = None,
+                 on_load: bool = False,
+                 regularizer: Optional[RegularizerApplicator] = None) -> None:
+        super().__init__(vocab, regularizer)
+
+        if on_load:
+            logging.info(f"Skipping loading of initial Transformer weights")
+            transformer_config = RobertaConfig.from_pretrained(pretrained_model)
+            self._transformer_model = RobertaModel(transformer_config)
+
+        elif transformer_weights_model:
+            logging.info(f"Loading Transformer weights model from {transformer_weights_model}")
+            transformer_model_loaded = load_archive(transformer_weights_model)
+            self._transformer_model = transformer_model_loaded.model._transformer_model
+        else:
+            self._transformer_model = RobertaModel.from_pretrained(pretrained_model)
+
+        for name, param in self._transformer_model.named_parameters():
+            grad = requires_grad
+            if layer_freeze_regexes and grad:
+                grad = not any([bool(re.search(r, name)) for r in layer_freeze_regexes])
+            param.requires_grad = grad
+
+        transformer_config = self._transformer_model.config
+        self._dropout = torch.nn.Dropout(transformer_config.hidden_dropout_prob)
+
+        self._output_dim = transformer_config.hidden_size
+        classifier_input_dim = self._output_dim
+        self._num_labels = num_labels
+        classifier_output_dim = self._num_labels
+        transformer_config.num_labels = classifier_output_dim
+        self._classifier = None
+        if not on_load and transformer_weights_model \
+                and hasattr(transformer_model_loaded.model, "_classifier") \
+                and not reset_classifier:
+            self._classifier = transformer_model_loaded.model._classifier
+            old_dims = (self._classifier.dense.in_features, self._classifier.out_proj.out_features)
+            new_dims = (classifier_input_dim, classifier_output_dim)
+            if old_dims != new_dims:
+                logging.info(f"NOT copying Transformer classifier weights, incompatible dims: {old_dims} vs {new_dims}")
+                self._classifier = None
+        if self._classifier is None:
+            if classifier_head == "std":
+                logging.info(f"Using standard token classification head.")
+                self._classifier = RobertaTokenClassificationHead(transformer_config, self._num_labels)
+            else:
+                self._classifier = Linear(transformer_config.hidden_size, self._num_labels)
+
+        self._accuracy = CategoricalAccuracy()
+        self._f1measure = F1Measure(positive_label=1)
+
+        # self._loss = torch.nn.CrossEntropyLoss()
+        self._debug = 2
+        self._padding_value = 1  # The index of the RoBERTa padding token
+
+    def forward(self,
+                tokens: Dict[str, torch.LongTensor],
+                word_offsets: torch.LongTensor,
+                tags: torch.LongTensor = None,
+                metadata: List[Dict[str, Any]] = None) -> torch.Tensor:
+
+        self._debug -= 1
+        input_ids = tokens['tokens']
+
+        batch_size = input_ids.size(0)
+
+        question_mask = (input_ids != self._padding_value).long()
+        word_offsets_mask = (word_offsets != -1).long()
+
+        if self._debug > 0:
+            print(f"batch_size = {batch_size}")
+            print(f"question_mask = {question_mask}")
+            print(f"input_ids.size() = {input_ids.size()}")
+            print(f"input_ids = {input_ids}")
+            print(f"tags = {tags}")
+            print(f"word_offsets = {word_offsets}")
+            print(f"word_offsets_mask = {word_offsets_mask}")
+
+        # Segment ids are not used by RoBERTa
+
+        transformer_outputs = self._transformer_model(input_ids=input_ids,
+                                                      # token_type_ids=segment_ids,
+                                                      attention_mask=question_mask)
+
+        sequence_output = transformer_outputs[0]
+        sequence_output = self._dropout(sequence_output)
+        range_vector = util.get_range_vector(batch_size, device=util.get_device_of(word_offsets)).unsqueeze(1)
+        word_output = sequence_output[range_vector, word_offsets.long()]
+
+        label_logits = self._classifier(word_output)
+
+        if self._debug > 0:
+            print(f"sequence_output shape = {sequence_output.size()}")
+            print(f"word_output shape = {word_output.size()}")
+            print(f"label_logits = {label_logits}")
+            print(f"word_output = {word_output}")
+
+        output_dict = {}
+        output_dict['label_logits'] = label_logits
+
+        output_dict['label_probs'] = util.masked_softmax(label_logits, word_offsets_mask.unsqueeze(-1))
+        output_dict['label_predicted'] = label_logits.argmax(2)
+
+        if tags is not None:
+            # Replace masked tags by zero
+            tags.masked_fill_((1 - word_offsets_mask).to(dtype=torch.bool), 0)
+            if self._debug > 0:
+                print(f"tags mask filled = {tags}")
+            loss = util.sequence_cross_entropy_with_logits(label_logits, tags, word_offsets_mask)
+            self._accuracy(label_logits, tags, word_offsets_mask)
+            self._f1measure(label_logits, tags, word_offsets_mask)
+            output_dict["loss"] = loss
+
+        if self._debug > 0:
+            print(output_dict)
+        return output_dict
+
+
+    def get_metrics(self, reset: bool = False) -> Dict[str, float]:
+        precision, recall, f1 = self._f1measure.get_metric(reset)
+        return {
+            'accuracy': self._accuracy.get_metric(reset),
+            'precision': precision,
+            'recall': recall,
+            'f1': f1
         }
 
     @classmethod
