@@ -17,6 +17,7 @@ from allennlp.models.reading_comprehension.util import get_best_span
 from allennlp.nn import RegularizerApplicator, util
 from allennlp.training.metrics import BooleanAccuracy, CategoricalAccuracy, F1Measure, SquadEmAndF1
 
+logger = logging.getLogger(__name__)
 
 @Model.register("roberta_mc_qa")
 class RobertaMCQAModel(Model):
@@ -94,13 +95,13 @@ class RobertaMCQAModel(Model):
         question_mask = (input_ids != self._padding_value).long()
 
         if self._debug > 0:
-            print(f"batch_size = {batch_size}")
-            print(f"num_choices = {num_choices}")
-            print(f"question_mask = {question_mask}")
-            print(f"input_ids.size() = {input_ids.size()}")
-            print(f"input_ids = {input_ids}")
-            print(f"segment_ids = {segment_ids}")
-            print(f"label = {label}")
+            logger.info(f"batch_size = {batch_size}")
+            logger.info(f"num_choices = {num_choices}")
+            logger.info(f"question_mask = {question_mask}")
+            logger.info(f"input_ids.size() = {input_ids.size()}")
+            logger.info(f"input_ids = {input_ids}")
+            logger.info(f"segment_ids = {segment_ids}")
+            logger.info(f"label = {label}")
 
         # Segment ids are not used by RoBERTa
 
@@ -111,7 +112,7 @@ class RobertaMCQAModel(Model):
         cls_output = transformer_outputs[0]
 
         if self._debug > 0:
-            print(f"cls_output = {cls_output}")
+            logger.info(f"cls_output = {cls_output}")
 
         label_logits = self._classifier(cls_output)
         label_logits = label_logits.view(-1, num_choices)
@@ -128,7 +129,7 @@ class RobertaMCQAModel(Model):
             output_dict["loss"] = loss
 
         if self._debug > 0:
-            print(output_dict)
+            logger.info(output_dict)
         return output_dict
 
 
@@ -229,13 +230,13 @@ class RobertaClassifierModel(Model):
         question_mask = (input_ids != self._padding_value).long()
 
         if self._debug > 0:
-            print(f"batch_size = {batch_size}")
-            print(f"num_choices = {num_choices}")
-            print(f"question_mask = {question_mask}")
-            print(f"input_ids.size() = {input_ids.size()}")
-            print(f"input_ids = {input_ids}")
-            print(f"segment_ids = {segment_ids}")
-            print(f"label = {label}")
+            logger.info(f"batch_size = {batch_size}")
+            logger.info(f"num_choices = {num_choices}")
+            logger.info(f"question_mask = {question_mask}")
+            logger.info(f"input_ids.size() = {input_ids.size()}")
+            logger.info(f"input_ids = {input_ids}")
+            logger.info(f"segment_ids = {segment_ids}")
+            logger.info(f"label = {label}")
 
         # Segment ids are not used by RoBERTa
 
@@ -246,7 +247,7 @@ class RobertaClassifierModel(Model):
         cls_output = transformer_outputs[0]
 
         if self._debug > 0:
-            print(f"cls_output = {cls_output}")
+            logger.info(f"cls_output = {cls_output}")
 
         label_logits = self._classifier(cls_output)
 
@@ -262,7 +263,7 @@ class RobertaClassifierModel(Model):
             output_dict["loss"] = loss
 
         if self._debug > 0:
-            print(output_dict)
+            logger.info(output_dict)
         return output_dict
 
 
@@ -351,13 +352,13 @@ class RobertaSpanPredictionModel(Model):
         tokens_mask = (input_ids != self._padding_value).long()
 
         if self._debug > 0:
-            print(f"batch_size = {batch_size}")
-            print(f"tokens_mask = {tokens_mask}")
-            print(f"input_ids.size() = {input_ids.size()}")
-            print(f"input_ids = {input_ids}")
-            print(f"segment_ids = {segment_ids}")
-            print(f"start_positions = {start_positions}")
-            print(f"end_positions = {end_positions}")
+            logger.info(f"batch_size = {batch_size}")
+            logger.info(f"tokens_mask = {tokens_mask}")
+            logger.info(f"input_ids.size() = {input_ids.size()}")
+            logger.info(f"input_ids = {input_ids}")
+            logger.info(f"segment_ids = {segment_ids}")
+            logger.info(f"start_positions = {start_positions}")
+            logger.info(f"end_positions = {end_positions}")
 
         # Segment ids are not used by RoBERTa
 
@@ -426,7 +427,7 @@ class RobertaSpanPredictionModel(Model):
             output_dict['tokens_texts'] = tokens_texts
 
         if self._debug > 0:
-            print(f"output_dict = {output_dict}")
+            logger.info(f"output_dict = {output_dict}")
 
         return output_dict
 
@@ -565,13 +566,13 @@ class RobertaTaggerModel(Model):
         word_offsets_mask = (word_offsets != -1).long()
 
         if self._debug > 0:
-            print(f"batch_size = {batch_size}")
-            print(f"question_mask = {question_mask}")
-            print(f"input_ids.size() = {input_ids.size()}")
-            print(f"input_ids = {input_ids}")
-            print(f"tags = {tags}")
-            print(f"word_offsets = {word_offsets}")
-            print(f"word_offsets_mask = {word_offsets_mask}")
+            logger.info(f"batch_size = {batch_size}")
+            logger.info(f"question_mask = {question_mask}")
+            logger.info(f"input_ids.size() = {input_ids.size()}")
+            logger.info(f"input_ids = {input_ids}")
+            logger.info(f"tags = {tags}")
+            logger.info(f"word_offsets = {word_offsets}")
+            logger.info(f"word_offsets_mask = {word_offsets_mask}")
 
         # Segment ids are not used by RoBERTa
 
@@ -587,10 +588,10 @@ class RobertaTaggerModel(Model):
         label_logits = self._classifier(word_output)
 
         if self._debug > 0:
-            print(f"sequence_output shape = {sequence_output.size()}")
-            print(f"word_output shape = {word_output.size()}")
-            print(f"label_logits = {label_logits}")
-            print(f"word_output = {word_output}")
+            logger.info(f"sequence_output shape = {sequence_output.size()}")
+            logger.info(f"word_output shape = {word_output.size()}")
+            logger.info(f"label_logits = {label_logits}")
+            logger.info(f"word_output = {word_output}")
 
         output_dict = {}
         output_dict['label_logits'] = label_logits
@@ -602,14 +603,14 @@ class RobertaTaggerModel(Model):
             # Replace masked tags by zero
             tags.masked_fill_((1 - word_offsets_mask).to(dtype=torch.bool), 0)
             if self._debug > 0:
-                print(f"tags mask filled = {tags}")
+                logger.info(f"tags mask filled = {tags}")
             loss = util.sequence_cross_entropy_with_logits(label_logits, tags, word_offsets_mask)
             self._accuracy(label_logits, tags, word_offsets_mask)
             self._f1measure(label_logits, tags, word_offsets_mask)
             output_dict["loss"] = loss
 
         if self._debug > 0:
-            print(output_dict)
+            logger.info(output_dict)
         return output_dict
 
 
