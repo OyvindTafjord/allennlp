@@ -39,3 +39,4 @@ from allennlp.models.srl_bert import SrlBert
 from allennlp.models.transformer_mc.bert_models import BertMCQAModel
 from allennlp.models.transformer_mc.xlnet_models import XLNetMCQAModel
 from allennlp.models.transformer_mc.roberta_models import RobertaMCQAModel
+from allennlp.models.transformer_mc.roberta_ddi import RobertaDdiClassifierModel
