@@ -36,11 +36,12 @@ class TransformerTaggerReader(DatasetReader):
     def __init__(self,
                  pretrained_model: str,
                  max_pieces: int = 512,
-                 syntax: str = "N/A",
+                 syntax: str = "esst",
                  skip_id_regex: str = None,
                  tag_score_cutoff: float = 0.5,
                  context_strip_sep: str = None,
                  answer_only: bool = False,
+                 context_type: str = None,
                  add_prefix: Dict[str, str] = None,
                  dataset_dir_out: str = None,
                  model_type: str = None,
@@ -66,6 +67,7 @@ class TransformerTaggerReader(DatasetReader):
         self._syntax = syntax
         self._answer_only = answer_only
         self._skip_id_regex = skip_id_regex
+        self._context_type = context_type
         self._context_strip_sep = context_strip_sep
         self._dataset_dir_out = dataset_dir_out
         self._model_type = model_type
@@ -118,12 +120,21 @@ class TransformerTaggerReader(DatasetReader):
                 if debug > 0:
                     logger.info(item_json)
 
+                if self._syntax == "arc":
+                    item_json["text"] = item_json["question"]["stem"]
+
                 text = item_json["text"]
                 tags = item_json.get("tags")
+                context = None
+                if self._context_type is not None:
+                    raw_text = item_json["raw_text"]
+                    context = re.findall("\\([A1]\\).*", raw_text)
+                    context = context[0] if context else None
 
                 yield self.text_to_instance(
                     item_id=item_id,
                     text=text,
+                    context=context,
                     tags=tags,
                     debug=debug)
 
@@ -131,6 +142,7 @@ class TransformerTaggerReader(DatasetReader):
     def text_to_instance(self,  # type: ignore
                          item_id: str,
                          text: str,
+                         context: str = None,
                          tags: List[Dict[str, Any]] = None,
                          additional_metadata: Dict[str, Any] = {},
                          debug: int = -1) -> Instance:
@@ -139,16 +151,15 @@ class TransformerTaggerReader(DatasetReader):
 
         word_tokens = self._word_tokenizer.tokenize(text)
 
-        text_tokens, word_offsets = self.expand_subword_tokens(word_tokens)
+        text_tokens, word_offsets = self.expand_subword_tokens(word_tokens, context)
         tokens_field = TextField(text_tokens, self._token_indexers)
         word_offsets_field = ArrayField(numpy.array(word_offsets, dtype=numpy.long), padding_value=-1, dtype=numpy.long)
 
-        tags_field = None
         tag_per_word_token = None
         if tags is not None:
             tag_per_word_token = self._align_token_tags(word_tokens, tags)
             tags_field = ListField([LabelField(tag, skip_indexing=True) for tag in tag_per_word_token])
-
+            fields['tags'] = tags_field
 
         if debug > 0:
             logger.info(f"text_tokens = {text_tokens}")
@@ -157,7 +168,6 @@ class TransformerTaggerReader(DatasetReader):
 
         fields['tokens'] = tokens_field
         fields['word_offsets'] = word_offsets_field
-        fields['tags'] = tags_field
 
         metadata = {
             "id": item_id,
@@ -189,26 +199,7 @@ class TransformerTaggerReader(DatasetReader):
             tag_per_word_token.append(found)
         return tag_per_word_token
 
-    @staticmethod
-    def _truncate_tokens(context_tokens, question_tokens, choice_tokens, max_length):
-        """
-        Truncate context_tokens first, from the left, then question_tokens and choice_tokens
-        """
-        max_context_len = max_length - len(question_tokens) - len(choice_tokens)
-        if max_context_len > 0:
-            if len(context_tokens) > max_context_len:
-                context_tokens = context_tokens[-max_context_len:]
-        else:
-            context_tokens = []
-            while len(question_tokens) + len(choice_tokens) > max_length:
-                if len(question_tokens) > len(choice_tokens):
-                    question_tokens.pop(0)
-                else:
-                    choice_tokens.pop()
-        return context_tokens, question_tokens, choice_tokens
-
-
-    def expand_subword_tokens(self, word_tokens: List[Token]):
+    def expand_subword_tokens(self, word_tokens: List[Token], context: str = None):
         cls_token = Token(self._tokenizer_internal.cls_token)
         sep_token = Token(self._tokenizer_internal.sep_token)
         #pad_token = self._tokenizer_internal.pad_token
@@ -220,22 +211,25 @@ class TransformerTaggerReader(DatasetReader):
         #pad_token_val=self._tokenizer.encoder[pad_token] if self._model_type in ['roberta'] else self._tokenizer.vocab[pad_token]
         offsets = []
         tokens = []
-        current_offset = 0
         tokens_at_end = 1
         if not cls_token_at_end:
             tokens.append(cls_token)
-            current_offset += 1
         else:
             tokens_at_end += 1
+
+        if context is not None:
+            context_tokens = self._tokenizer.tokenize(context)
+            tokens += context_tokens
+            tokens = tokens[:self._max_pieces - tokens_at_end - 1]  # just in case it's too long
+            tokens.append(sep_token)
         for word_token in word_tokens:
             # NB: Watch out for downstream changes requiring adding leading space here
             subword_tokens = self._tokenizer.tokenize(word_token.text)
             if len(tokens) + len(subword_tokens) + tokens_at_end > self._max_pieces:
                 break
             # Assume we want token for first subword in each word
-            offsets.append(current_offset)
+            offsets.append(len(tokens))
             tokens += subword_tokens
-            current_offset += len(subword_tokens)
         tokens.append(sep_token)
         if cls_token_at_end:
             tokens.append(cls_token)
