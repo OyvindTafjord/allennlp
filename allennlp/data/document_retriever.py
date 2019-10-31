@@ -42,8 +42,7 @@ def list_sentences(hits, num: int = None, max_len: int = None) -> str:
             new = new + "."
         sentences_processed.append(new)
     return sentences_processed
-    output = " ".join(reversed(sentences_processed))
-    return output
+
 
 def combine_sentences(hits, num: int = None, max_len: int = None) -> str:
     sentences_processed = list_sentences(hits, num, max_len)
@@ -152,6 +151,7 @@ class ElasticSearchQARetriever(DocumentRetriever):
                  extra_es_args: Dict[str, Any] = None,
                  indices: Union[str, List[str]]= None,
                  query_format: str = "aristo-qa",
+                 query_params: Dict[str, Any] = None,
                  dfs_query_then_fetch: bool = True,
                  retries: int = 3,
                  timeout: int = 60,
@@ -181,6 +181,7 @@ class ElasticSearchQARetriever(DocumentRetriever):
         else:
             self._indices = ",".join(indices)
         self._query_format = query_format
+        self._query_params = query_params
         self._max_question_length = max_question_length
         self._max_document_length = max_document_length
         self._num_retrievals = num_retrievals
@@ -225,13 +226,17 @@ class ElasticSearchQARetriever(DocumentRetriever):
     def _retriever(self, query: Dict[str, str]) -> List[Dict[str, Any]]:
         question = query.get('q')
         answer = query.get('a', "")
+        boost_data = None
         if self._query_format == "aristo-qstem":
             answer = ""
+        if self._query_format == "aristo-qa-boost":
+            boost_data = (query.get('b', ""), self._query_params["boost"])
         max_hits = self._num_retrievals
         if self._max_document_length and max_hits:
             max_hits *= 2  # Manual heuristic factor to account for filtered long documents
         es_query = self.construct_qa_query(question,
                                            answer,
+                                           boost_data=boost_data,
                                            require_match=True,
                                            max_hits=max_hits,
                                            max_question_length=self._max_question_length)
@@ -244,35 +249,26 @@ class ElasticSearchQARetriever(DocumentRetriever):
         return [{'score': hit['_score'], 'text': hit['_source']['text'], "index": hit['_index']} for hit in hits]
 
     @staticmethod
-    def construct_qa_query(question, choice="", require_match=True, max_hits=50, max_question_length=None):
+    def construct_qa_query(question,
+                           choice="",
+                           boost_data = None,
+                           require_match=True,
+                           max_hits=50,
+                           max_question_length=None):
         question_for_query = question[-max_question_length:] if max_question_length else question
         query_text = question_for_query + " " + choice
+        bool_query = {"must": [{"match": {"text": query_text}}]}
         if require_match and len(choice) > 0:
-            return {"from": 0, "size": max_hits,
-                    "query": {
-                        "bool": {
-                            "must": [
-                                {"match": {
-                                    "text": query_text
-                                }}
-                            ],
-                            "filter": [
-                                {"match": {"text": choice}},
-                                {"match": {"text": question_for_query}},
-                                {"type": {"value": "sentence"}}
-                            ]
-                        }
-                    }}
-        return {"from": 0, "size": max_hits,
-                "query": {
-                    "bool": {
-                        "must": [
-                            {"match": {
-                                "text": query_text
-                            }}
-                        ],
-                        "filter": [
-                            {"type": {"value": "sentence"}}
-                        ]
-                    }
-                }}
+            bool_query['filter'] = [
+                {"match": {"text": choice}},
+                {"match": {"text": question_for_query}},
+                {"type": {"value": "sentence"}}
+            ]
+        else:
+            bool_query['filter'] = [
+                {"type": {"value": "sentence"}}
+            ]
+        if boost_data is not None:
+            bool_query["should"] = [
+                {'query_string': {'query': boost_data[0], 'default_field': 'text', 'boost':boost_data[1]}}]
+        return {"from": 0, "size": max_hits, "query": {"bool": bool_query}}
