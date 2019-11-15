@@ -166,6 +166,7 @@ class RobertaClassifierModel(Model):
                  requires_grad: bool = True,
                  num_labels: int = None,
                  transformer_weights_model: str = None,
+                 label_namespace: str = "labels",
                  reset_classifier: bool = False,
                  layer_freeze_regexes: List[str] = None,
                  on_load: bool = False,
@@ -210,6 +211,7 @@ class RobertaClassifierModel(Model):
         if self._classifier is None:
             self._classifier = RobertaClassificationHead(transformer_config)
 
+        self._label_namespace = label_namespace
         self._accuracy = CategoricalAccuracy()
         self._loss = torch.nn.CrossEntropyLoss()
         self._debug = 2
@@ -255,7 +257,14 @@ class RobertaClassifierModel(Model):
         output_dict['label_logits'] = label_logits
 
         output_dict['label_probs'] = torch.nn.functional.softmax(label_logits, dim=1)
-        output_dict['label_predicted'] = label_logits.argmax(1)
+        label_predicted = label_logits.argmax(1).detach().cpu()
+        output_dict['label_predicted'] = label_predicted
+        output_dict['label_str'] = []
+        for i in range(batch_size):
+            label_predicted1 = label_predicted[i].item()
+            label_str = self.vocab.get_index_to_token_vocabulary(self._label_namespace) \
+                            .get(label_predicted1, str(label_predicted1))
+            output_dict['label_str'].append(label_str)
 
         if label is not None:
             loss = self._loss(label_logits, label)

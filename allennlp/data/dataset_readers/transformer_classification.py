@@ -114,7 +114,7 @@ class TransformerClassificationReader(DatasetReader):
             for line in data_file:
                 item_json = json.loads(line.strip())
 
-                item_id = item_json["id"]
+                item_id = item_json.get("id", "NA")
                 if self._skip_id_regex and re.match(self._skip_id_regex, item_id):
                     continue
 
@@ -127,9 +127,16 @@ class TransformerClassificationReader(DatasetReader):
                     logger.info(item_json)
 
                 context = item_json.get("context")
-                question_text = item_json["question_text"]
-                choice = item_json["choice"]
-                label = item_json.get("label")
+                if self._syntax == "arc-ir":
+                    question_text = item_json["question_text"]
+                    choice = item_json["choice"]
+                    label = item_json.get("label")
+                elif self._syntax == "lmbias":
+                    question_text = item_json["text"]
+                    choice = None
+                    label = item_json.get("model")
+                else:
+                    raise ValueError(f"Unknown syntax {self._syntax}")
 
                 if (context is None or self._override_context) and self._context_format is not None:
                     raise NotImplementedError
@@ -163,7 +170,7 @@ class TransformerClassificationReader(DatasetReader):
     def text_to_instance(self,  # type: ignore
                          item_id: str,
                          question: str,
-                         choice: str,
+                         choice: str = None,
                          label: int = None,
                          context: str = None,
                          additional_metadata: Dict[str, Any] = {},
@@ -191,7 +198,8 @@ class TransformerClassificationReader(DatasetReader):
         metadata.update(additional_metadata)
 
         if label is not None:
-            fields['label'] = LabelField(label, skip_indexing=True)
+            # We'll assume integer labels don't need indexing
+            fields['label'] = LabelField(label, skip_indexing=isinstance(label, int))
             metadata['label'] = label
 
         if debug > 0:
@@ -235,7 +243,8 @@ class TransformerClassificationReader(DatasetReader):
         #pad_token_segment_id = 4 if self._model_type in ['xlnet'] else 0
         #pad_token_val=self._tokenizer.encoder[pad_token] if self._model_type in ['roberta'] else self._tokenizer.vocab[pad_token]
         question = self._add_prefix.get("q", "") + question
-        answer = self._add_prefix.get("a",  "") + answer
+        if answer is not None:
+            answer = self._add_prefix.get("a",  "") + answer
         question_tokens = self._tokenizer.tokenize(question)
         if context is not None:
             context = self._add_prefix.get("c", "") + context
@@ -247,7 +256,10 @@ class TransformerClassificationReader(DatasetReader):
         sep_mult = 2 if sep_token_extra else 1
         max_tokens = self._max_pieces - seps * sep_mult - 1
 
-        choice_tokens = self._tokenizer.tokenize(answer)
+        if answer is not None:
+            choice_tokens = self._tokenizer.tokenize(answer)
+        else:
+            choice_tokens = []
 
         context_tokens, question_tokens, choice_tokens = self._truncate_tokens(context_tokens,
                                                                                question_tokens,
