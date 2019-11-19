@@ -129,7 +129,7 @@ class TransformerClassificationReader(DatasetReader):
                 context = item_json.get("context")
                 if self._syntax == "arc-ir":
                     question_text = item_json["question_text"]
-                    choice = item_json["choice"]
+                    choice = item_json.get("choice")
                     label = item_json.get("label")
                 elif self._syntax == "lmbias":
                     question_text = item_json["text"]
@@ -181,10 +181,6 @@ class TransformerClassificationReader(DatasetReader):
         qa_tokens, segment_ids = self.transformer_features_from_qa(question, choice, context)
         qa_field = TextField(qa_tokens, self._token_indexers)
         segment_ids_field = SequenceLabelField(segment_ids, qa_field)
-        if debug > 0:
-            logger.info(f"qa_tokens = {qa_tokens}")
-            logger.info(f"segment_ids = {segment_ids}")
-
         fields['tokens'] = qa_field
         fields['segment_ids'] = segment_ids_field
 
