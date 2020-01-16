@@ -37,6 +37,7 @@ class TransformerClassificationReader(DatasetReader):
                  skip_id_regex: str = None,
                  context_strip_sep: str = None,
                  answer_only: bool = False,
+                 ignore_answer: bool = False,
                  context_syntax: str = "c#q#_a!",
                  add_prefix: Dict[str, str] = None,
                  document_retriever: DocumentRetriever = None,
@@ -63,6 +64,7 @@ class TransformerClassificationReader(DatasetReader):
         self._syntax = syntax
         self._context_syntax = context_syntax
         self._answer_only = answer_only
+        self._ignore_answer = ignore_answer
         self._skip_id_regex = skip_id_regex
         self._override_context = override_context
         self._context_strip_sep = context_strip_sep
@@ -137,6 +139,9 @@ class TransformerClassificationReader(DatasetReader):
                     label = item_json.get("model")
                 else:
                     raise ValueError(f"Unknown syntax {self._syntax}")
+
+                if self._ignore_answer:
+                    choice = None
 
                 if (context is None or self._override_context) and self._context_format is not None:
                     raise NotImplementedError
