@@ -101,7 +101,19 @@ class TransformerMCQAReader(DatasetReader):
         self._dataset_cache = None
         if self._dataset_dir_out is not None:
             self._dataset_cache = []
+        self._dataset_stats = {
+            'truncated instances': 0,
+            'max tokens': 0,
+            'min tokens': 999999,
+        }
         instances = self._read_internal(file_path)
+        if self._dataset_stats is not None:
+            if not isinstance(instances, list):
+                instances = [instance for instance in Tqdm.tqdm(instances)]
+            logger.info('** Dataset Statistics **')
+            for key, value in self._dataset_stats.items():
+                logger.info(f'  {key}: {value}')
+            logger.info('************************')
         if self.document_retriever is not None:
             if not isinstance(instances, list):
                 instances = [instance for instance in Tqdm.tqdm(instances)]
@@ -613,10 +625,19 @@ class TransformerMCQAReader(DatasetReader):
 
         choice_tokens = self._tokenizer.tokenize(answer)
 
+        num_tokens_all = len(context_tokens) + len(choice_tokens) + len(question_tokens) + seps * sep_mult + 1
         context_tokens, question_tokens, choice_tokens = self._truncate_tokens(context_tokens,
                                                                                question_tokens,
                                                                                choice_tokens,
                                                                                max_tokens)
+        num_tokens_trunc = len(context_tokens) + len(choice_tokens) + len(question_tokens) + seps * sep_mult + 1
+        if self._dataset_stats is not None:
+            if num_tokens_all > self._dataset_stats['max tokens']:
+                self._dataset_stats['max tokens'] = num_tokens_all
+            if num_tokens_all < self._dataset_stats['min tokens']:
+                self._dataset_stats['min tokens'] = num_tokens_all
+            if num_tokens_trunc < num_tokens_all:
+                self._dataset_stats['truncated instances'] += 1
         tokens = []
         segment_ids = []
         current_segment = 0
