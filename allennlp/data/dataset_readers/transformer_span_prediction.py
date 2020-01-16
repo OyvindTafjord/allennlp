@@ -44,6 +44,7 @@ class TransformerSpanPredictionReader(DatasetReader):
                  doc_stride: int = 100,
                  is_training: bool = True,
                  context_selection: str = "first",
+                 custom_xlnet_token_conventions: bool = False,
                  answer_can_be_in_question: bool = None,
                  do_lowercase: bool = None,
                  sample: int = -1) -> None:
@@ -80,6 +81,9 @@ class TransformerSpanPredictionReader(DatasetReader):
                 if model in pretrained_model:
                     self._model_type = model
                     break
+        # If we don't want custom XLNet token conventions downstream, treat as Roberta:
+        if self._model_type == 'xlnet' and not custom_xlnet_token_conventions:
+            self._model_type = 'roberta'
 
     @overrides
     def _read(self, file_path: str):
