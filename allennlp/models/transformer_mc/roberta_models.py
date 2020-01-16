@@ -59,6 +59,7 @@ class RobertaMCQAModel(Model):
         transformer_config = self._transformer_model.config
 
         self._output_dim = transformer_config.hidden_size
+        self._per_choice_loss = per_choice_loss
         classifier_input_dim = self._output_dim
         classifier_output_dim = 1
         transformer_config.num_labels = classifier_output_dim
@@ -75,8 +76,12 @@ class RobertaMCQAModel(Model):
         if self._classifier is None:
             self._classifier = RobertaClassificationHead(transformer_config)
 
-        self._accuracy = CategoricalAccuracy()
-        self._loss = torch.nn.CrossEntropyLoss()
+        if self._per_choice_loss:
+            self._accuracy = BooleanAccuracy()
+            self._loss = torch.nn.BCEWithLogitsLoss()
+        else:
+            self._accuracy = CategoricalAccuracy()
+            self._loss = torch.nn.CrossEntropyLoss()
         self._debug = 2
         self._padding_value = 1  # The index of the RoBERTa padding token
 
@@ -115,17 +120,29 @@ class RobertaMCQAModel(Model):
             logger.info(f"cls_output = {cls_output}")
 
         label_logits = self._classifier(cls_output)
+        label_logits_flat = label_logits.squeeze(1)
         label_logits = label_logits.view(-1, num_choices)
 
         output_dict = {}
         output_dict['label_logits'] = label_logits
 
-        output_dict['label_probs'] = torch.nn.functional.softmax(label_logits, dim=1)
-        output_dict['answer_index'] = label_logits.argmax(1)
+        if self._per_choice_loss:
+            output_dict['label_probs'] = torch.sigmoid(label_logits_flat).view(-1, num_choices)
+            output_dict['answer_index'] = (label_logits_flat > 0).view(-1, num_choices)
+        else:
+            output_dict['label_probs'] = torch.nn.functional.softmax(label_logits, dim=1)
+            output_dict['answer_index'] = label_logits.argmax(1)
 
         if label is not None:
-            loss = self._loss(label_logits, label)
-            self._accuracy(label_logits, label)
+            if self._per_choice_loss:
+                binary_label = label.new_zeros((len(label), num_choices))
+                binary_label.scatter_(1, label.unsqueeze(1), 1.0)
+                binary_label = binary_label.view(-1,1).squeeze(1)
+                loss = self._loss(label_logits_flat, binary_label.float())
+                self._accuracy(label_logits_flat > 0, binary_label.byte())
+            else:
+                loss = self._loss(label_logits, label)
+                self._accuracy(label_logits, label)
             output_dict["loss"] = loss
 
         if self._debug > 0:
@@ -444,6 +461,7 @@ class RobertaSpanPredictionModel(Model):
         """ Converts a sequence of tokens (string) in a single string. """
         text = ''.join(tokens)
         text = bytearray([self.byte_decoder[c] for c in text]).decode('utf-8', errors='replace')
+        text = text.strip()
         return text
 
     def get_metrics(self, reset: bool = False) -> Dict[str, float]:
