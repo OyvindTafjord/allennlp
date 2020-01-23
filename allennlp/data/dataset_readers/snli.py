@@ -57,14 +57,16 @@ class SnliReader(DatasetReader):
 
                 premise = example["sentence1"]
                 hypothesis = example["sentence2"]
+                id = example.get("pairID", "NA")
 
-                yield self.text_to_instance(premise, hypothesis, label)
+                yield self.text_to_instance(premise, hypothesis, label, id)
 
     @overrides
     def text_to_instance(self,  # type: ignore
                          premise: str,
                          hypothesis: str,
-                         label: str = None) -> Instance:
+                         label: str = None,
+                         id: str = None) -> Instance:
         # pylint: disable=arguments-differ
         fields: Dict[str, Field] = {}
         premise_tokens = self._tokenizer.tokenize(premise)
@@ -74,7 +76,8 @@ class SnliReader(DatasetReader):
         if label:
             fields['label'] = LabelField(label)
 
-        metadata = {"premise_tokens": [x.text for x in premise_tokens],
+        metadata = {"id": id,
+                    "premise_tokens": [x.text for x in premise_tokens],
                     "hypothesis_tokens": [x.text for x in hypothesis_tokens]}
         fields["metadata"] = MetadataField(metadata)
         return Instance(fields)
