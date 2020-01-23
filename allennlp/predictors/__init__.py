@@ -21,6 +21,7 @@ from allennlp.predictors.next_token_lm import NextTokenLMPredictor
 from allennlp.predictors.nlvr_parser import NlvrParserPredictor
 from allennlp.predictors.open_information_extraction import OpenIePredictor
 from allennlp.predictors.quarel_parser import QuarelParserPredictor
+from allennlp.predictors.rule_reasoning import RuleReasoningPredictor
 from allennlp.predictors.semantic_role_labeler import SemanticRoleLabelerPredictor
 from allennlp.predictors.sentence_tagger import SentenceTaggerPredictor
 from allennlp.predictors.seq2seq import Seq2SeqPredictor
