@@ -1,4 +1,5 @@
 from typing import cast, Tuple
+import re
 
 from overrides import overrides
 
@@ -25,8 +26,11 @@ class RuleReasoningPredictor(Predictor):
             question_mc = question_raw
             question_data = dataset_reader.split_mc_question(question_raw)
             if question_data is None:
+                # Allow choice splits on periods and newlines as well.
+                choices = [{"label": "NA", "text": s.strip()} for
+                           s in re.split("(?<=\\.)|\n", question_raw) if s.strip() != ""]
                 question_data = {"stem": "Which is true?",
-                                 "choices": [{"label": "A", "text": question_raw}]}
+                                 "choices": choices}
         else:
             question_data = question_raw
         question_text = question_data["stem"]
@@ -55,6 +59,7 @@ class RuleReasoningPredictor(Predictor):
                       'question': question_mc,
                       'choice_labels': choice_labels,
                       'context': context,
+                      "choice_text_list": choice_text_list,
                       'choice_context_list': choice_context_list}
 
         return instance, extra_info
@@ -73,8 +78,9 @@ class RuleReasoningPredictor(Predictor):
         scores = outputs['label_probs']
 
         answer_strings = []
-        for label, answer, score in zip(return_dict['choice_labels'], answers, scores):
-            answer_strings.append(f"({label}) {answer} [{score:.4f}]")
+        for choice, answer, score in zip(return_dict['choice_text_list'], answers, scores):
+            score_norm = max(score, 1-score)
+            answer_strings.append(f"{choice}: {answer} [{score_norm:.4f}]")
         outputs['answer_string'] = "  ".join(answer_strings)
         outputs['answer_strings'] = answer_strings
 
