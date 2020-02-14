@@ -3,7 +3,6 @@ from typing import List, Tuple
 
 from overrides import overrides
 from pytorch_transformers.tokenization_auto import AutoTokenizer
-from pytorch_transformers.tokenization_roberta import RobertaTokenizer
 
 from allennlp.data.tokenizers.token import Token
 from allennlp.data.tokenizers.tokenizer import Tokenizer
