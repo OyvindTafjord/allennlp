@@ -356,7 +356,7 @@ def _train_worker(
     best_model : ``Model``
         The model with the best epoch weights.
     """
-    common_util.prepare_global_logging(
+    stdout_handler = common_util.prepare_global_logging(
         serialization_dir, file_friendly_logging, rank=process_rank, world_size=world_size
     )
     common_util.prepare_environment(params)
@@ -432,6 +432,8 @@ def _train_worker(
 
     if master:
         train_loop.finish(metrics)
+
+    common_util.cleanup_global_logging(stdout_handler)
 
     if not distributed:
         return train_loop.model
