@@ -1,63 +1,70 @@
-from typing import Dict, Optional, List, Any
+from typing import Dict, List, Any
 
 import torch
 
 from allennlp.common.checks import check_dimensions_match
-from allennlp.data import Vocabulary
+from allennlp.data import TextFieldTensors, Vocabulary
 from allennlp.models.model import Model
 from allennlp.modules import FeedForward, InputVariationalDropout
 from allennlp.modules.matrix_attention.legacy_matrix_attention import LegacyMatrixAttention
 from allennlp.modules import Seq2SeqEncoder, SimilarityFunction, TextFieldEmbedder
-from allennlp.nn import InitializerApplicator, RegularizerApplicator
-from allennlp.nn.util import get_text_field_mask, masked_softmax, weighted_sum, replace_masked_values
+from allennlp.nn import InitializerApplicator
+from allennlp.nn.util import (
+    get_text_field_mask,
+    masked_softmax,
+    weighted_sum,
+    replace_masked_values,
+)
 from allennlp.training.metrics import CategoricalAccuracy
 
 
 @Model.register("esim")
 class ESIM(Model):
     """
-    This ``Model`` implements the ESIM sequence model described in `"Enhanced LSTM for Natural Language Inference"
-    <https://www.semanticscholar.org/paper/Enhanced-LSTM-for-Natural-Language-Inference-Chen-Zhu/83e7654d545fbbaaf2328df365a781fb67b841b4>`_
+    This `Model` implements the ESIM sequence model described in [Enhanced LSTM for Natural Language Inference]
+    (https://www.semanticscholar.org/paper/Enhanced-LSTM-for-Natural-Language-Inference-Chen-Zhu/83e7654d545fbbaaf2328df365a781fb67b841b4)
     by Chen et al., 2017.
 
-    Parameters
-    ----------
-    vocab : ``Vocabulary``
-    text_field_embedder : ``TextFieldEmbedder``
-        Used to embed the ``premise`` and ``hypothesis`` ``TextFields`` we get as input to the
+    # Parameters
+
+    vocab : `Vocabulary`
+    text_field_embedder : `TextFieldEmbedder`
+        Used to embed the `premise` and `hypothesis` `TextFields` we get as input to the
         model.
-    encoder : ``Seq2SeqEncoder``
+    encoder : `Seq2SeqEncoder`
         Used to encode the premise and hypothesis.
-    similarity_function : ``SimilarityFunction``
+    similarity_function : `SimilarityFunction`
         This is the similarity function used when computing the similarity matrix between encoded
         words in the premise and words in the hypothesis.
-    projection_feedforward : ``FeedForward``
+    projection_feedforward : `FeedForward`
         The feedforward network used to project down the encoded and enhanced premise and hypothesis.
-    inference_encoder : ``Seq2SeqEncoder``
+    inference_encoder : `Seq2SeqEncoder`
         Used to encode the projected premise and hypothesis for prediction.
-    output_feedforward : ``FeedForward``
+    output_feedforward : `FeedForward`
         Used to prepare the concatenated premise and hypothesis for prediction.
-    output_logit : ``FeedForward``
+    output_logit : `FeedForward`
         This feedforward network computes the output logits.
-    dropout : ``float``, optional (default=0.5)
+    dropout : `float`, optional (default=0.5)
         Dropout percentage to use.
-    initializer : ``InitializerApplicator``, optional (default=``InitializerApplicator()``)
+    initializer : `InitializerApplicator`, optional (default=`InitializerApplicator()`)
         Used to initialize the model parameters.
-    regularizer : ``RegularizerApplicator``, optional (default=``None``)
-        If provided, will be used to calculate the regularization penalty during training.
     """
-    def __init__(self, vocab: Vocabulary,
-                 text_field_embedder: TextFieldEmbedder,
-                 encoder: Seq2SeqEncoder,
-                 similarity_function: SimilarityFunction,
-                 projection_feedforward: FeedForward,
-                 inference_encoder: Seq2SeqEncoder,
-                 output_feedforward: FeedForward,
-                 output_logit: FeedForward,
-                 dropout: float = 0.5,
-                 initializer: InitializerApplicator = InitializerApplicator(),
-                 regularizer: Optional[RegularizerApplicator] = None) -> None:
-        super().__init__(vocab, regularizer)
+
+    def __init__(
+        self,
+        vocab: Vocabulary,
+        text_field_embedder: TextFieldEmbedder,
+        encoder: Seq2SeqEncoder,
+        similarity_function: SimilarityFunction,
+        projection_feedforward: FeedForward,
+        inference_encoder: Seq2SeqEncoder,
+        output_feedforward: FeedForward,
+        output_logit: FeedForward,
+        dropout: float = 0.5,
+        initializer: InitializerApplicator = InitializerApplicator(),
+        **kwargs,
+    ) -> None:
+        super().__init__(vocab, **kwargs)
 
         self._text_field_embedder = text_field_embedder
         self._encoder = encoder
@@ -79,47 +86,60 @@ class ESIM(Model):
 
         self._num_labels = vocab.get_vocab_size(namespace="labels")
 
-        check_dimensions_match(text_field_embedder.get_output_dim(), encoder.get_input_dim(),
-                               "text field embedding dim", "encoder input dim")
-        check_dimensions_match(encoder.get_output_dim() * 4, projection_feedforward.get_input_dim(),
-                               "encoder output dim", "projection feedforward input")
-        check_dimensions_match(projection_feedforward.get_output_dim(), inference_encoder.get_input_dim(),
-                               "proj feedforward output dim", "inference lstm input dim")
+        check_dimensions_match(
+            text_field_embedder.get_output_dim(),
+            encoder.get_input_dim(),
+            "text field embedding dim",
+            "encoder input dim",
+        )
+        check_dimensions_match(
+            encoder.get_output_dim() * 4,
+            projection_feedforward.get_input_dim(),
+            "encoder output dim",
+            "projection feedforward input",
+        )
+        check_dimensions_match(
+            projection_feedforward.get_output_dim(),
+            inference_encoder.get_input_dim(),
+            "proj feedforward output dim",
+            "inference lstm input dim",
+        )
 
         self._accuracy = CategoricalAccuracy()
         self._loss = torch.nn.CrossEntropyLoss()
 
         initializer(self)
 
-    def forward(self,  # type: ignore
-                premise: Dict[str, torch.LongTensor],
-                hypothesis: Dict[str, torch.LongTensor],
-                label: torch.IntTensor = None,
-                metadata: List[Dict[str, Any]] = None  # pylint:disable=unused-argument
-               ) -> Dict[str, torch.Tensor]:
-        # pylint: disable=arguments-differ
+    def forward(  # type: ignore
+        self,
+        premise: TextFieldTensors,
+        hypothesis: TextFieldTensors,
+        label: torch.IntTensor = None,
+        metadata: List[Dict[str, Any]] = None,
+    ) -> Dict[str, torch.Tensor]:
+
         """
-        Parameters
-        ----------
-        premise : Dict[str, torch.LongTensor]
-            From a ``TextField``
-        hypothesis : Dict[str, torch.LongTensor]
-            From a ``TextField``
+        # Parameters
+
+        premise : TextFieldTensors
+            From a `TextField`
+        hypothesis : TextFieldTensors
+            From a `TextField`
         label : torch.IntTensor, optional (default = None)
-            From a ``LabelField``
-        metadata : ``List[Dict[str, Any]]``, optional, (default = None)
+            From a `LabelField`
+        metadata : `List[Dict[str, Any]]`, optional, (default = None)
             Metadata containing the original tokenization of the premise and
             hypothesis with 'premise_tokens' and 'hypothesis_tokens' keys respectively.
 
-        Returns
-        -------
+        # Returns
+
         An output dictionary consisting of:
 
         label_logits : torch.FloatTensor
-            A tensor of shape ``(batch_size, num_labels)`` representing unnormalised log
+            A tensor of shape `(batch_size, num_labels)` representing unnormalised log
             probabilities of the entailment label.
         label_probs : torch.FloatTensor
-            A tensor of shape ``(batch_size, num_labels)`` representing probabilities of the
+            A tensor of shape `(batch_size, num_labels)` representing probabilities of the
             entailment label.
         loss : torch.FloatTensor, optional
             A scalar loss to be optimised.
@@ -153,16 +173,22 @@ class ESIM(Model):
 
         # the "enhancement" layer
         premise_enhanced = torch.cat(
-                [encoded_premise, attended_hypothesis,
-                 encoded_premise - attended_hypothesis,
-                 encoded_premise * attended_hypothesis],
-                dim=-1
+            [
+                encoded_premise,
+                attended_hypothesis,
+                encoded_premise - attended_hypothesis,
+                encoded_premise * attended_hypothesis,
+            ],
+            dim=-1,
         )
         hypothesis_enhanced = torch.cat(
-                [encoded_hypothesis, attended_premise,
-                 encoded_hypothesis - attended_premise,
-                 encoded_hypothesis * attended_premise],
-                dim=-1
+            [
+                encoded_hypothesis,
+                attended_premise,
+                encoded_hypothesis - attended_premise,
+                encoded_hypothesis * attended_premise,
+            ],
+            dim=-1,
         )
 
         # The projection layer down to the model dimension.  Dropout is not applied before
@@ -179,18 +205,14 @@ class ESIM(Model):
 
         # The pooling layer -- max and avg pooling.
         # (batch_size, model_dim)
-        v_a_max, _ = replace_masked_values(
-                v_ai, premise_mask.unsqueeze(-1), -1e7
-        ).max(dim=1)
-        v_b_max, _ = replace_masked_values(
-                v_bi, hypothesis_mask.unsqueeze(-1), -1e7
-        ).max(dim=1)
+        v_a_max, _ = replace_masked_values(v_ai, premise_mask.unsqueeze(-1), -1e7).max(dim=1)
+        v_b_max, _ = replace_masked_values(v_bi, hypothesis_mask.unsqueeze(-1), -1e7).max(dim=1)
 
         v_a_avg = torch.sum(v_ai * premise_mask.unsqueeze(-1), dim=1) / torch.sum(
-                premise_mask, 1, keepdim=True
+            premise_mask, 1, keepdim=True
         )
         v_b_avg = torch.sum(v_bi * hypothesis_mask.unsqueeze(-1), dim=1) / torch.sum(
-                hypothesis_mask, 1, keepdim=True
+            hypothesis_mask, 1, keepdim=True
         )
 
         # Now concat
@@ -215,4 +237,4 @@ class ESIM(Model):
         return output_dict
 
     def get_metrics(self, reset: bool = False) -> Dict[str, float]:
-        return {'accuracy': self._accuracy.get_metric(reset)}
+        return {"accuracy": self._accuracy.get_metric(reset)}

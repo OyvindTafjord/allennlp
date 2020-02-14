@@ -15,34 +15,35 @@ class EventHandler(NamedTuple):
     handler: Callable[[TrainerBase], None]
     priority: int
 
+
 def _is_event_handler(member) -> bool:
-    return inspect.ismethod(member) and hasattr(member, '_event') and hasattr(member, '_priority')
+    return inspect.ismethod(member) and hasattr(member, "_event") and hasattr(member, "_priority")
 
 
 class CallbackHandler:
     """
-    A ``CallbackHandler`` owns zero or more ``Callback``s, each of which is associated
-    with some "event". It then exposes a ``fire_event`` method, which calls each
+    A `CallbackHandler` owns zero or more `Callback`s, each of which is associated
+    with some "event". It then exposes a `fire_event` method, which calls each
     callback associated with that event ordered by their priorities.
 
     The callbacks take no parameters; instead they read from and write to this handler's
-    ``state``, which should be a Trainer.
+    `state`, which should be a Trainer.
 
-    Parameters
-    ----------
-    callbacks : ``Iterable[Callback]``
+    # Parameters
+
+    callbacks : `Iterable[Callback]`
         The callbacks to be handled.
-    state : ``TrainerBase``
+    state : `TrainerBase`
         The trainer from which the callbacks will read state
         and to which the callbacks will write state.
     verbose : bool, optional (default = False)
         If true, will log every event -> callback. Please only
         use this for debugging purposes.
     """
-    def __init__(self,
-                 callbacks: Iterable[Callback],
-                 state: TrainerBase,
-                 verbose: bool = False) -> None:
+
+    def __init__(
+        self, callbacks: Iterable[Callback], state: TrainerBase, verbose: bool = False
+    ) -> None:
         # Set up callbacks
         self._callbacks: Dict[str, List[EventHandler]] = defaultdict(list)
 
@@ -55,21 +56,25 @@ class CallbackHandler:
             self.add_callback(callback)
 
     def callbacks(self) -> List[Callback]:
-        # pylint: disable=function-redefined
+
         """
         Returns the callbacks associated with this handler.
         Each callback may be registered under multiple events,
         but we make sure to only return it once. If `typ` is specified,
         only returns callbacks of that type.
         """
-        return list({callback.callback
-                     for callback_list in self._callbacks.values()
-                     for callback in callback_list})
+        return list(
+            {
+                callback.callback
+                for callback_list in self._callbacks.values()
+                for callback in callback_list
+            }
+        )
 
     def add_callback(self, callback: Callback) -> None:
         for name, method in inspect.getmembers(callback, _is_event_handler):
-            event = getattr(method, '_event')
-            priority = getattr(method, '_priority')
+            event = getattr(method, "_event")
+            priority = getattr(method, "_priority")
             self._callbacks[event].append(EventHandler(name, callback, method, priority))
             self._callbacks[event].sort(key=lambda eh: eh.priority)
 

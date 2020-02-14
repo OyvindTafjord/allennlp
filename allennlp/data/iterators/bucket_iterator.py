@@ -5,41 +5,12 @@ from typing import List, Tuple, Iterable, cast, Dict, Deque
 
 from overrides import overrides
 
-from allennlp.common.checks import ConfigurationError
 from allennlp.common.util import lazy_groups_of, add_noise_to_dict_values
-from allennlp.data.dataset import Batch
+from allennlp.data.batch import Batch
 from allennlp.data.instance import Instance
 from allennlp.data.iterators.data_iterator import DataIterator
-from allennlp.data.vocabulary import Vocabulary
 
-logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
-
-
-def sort_by_padding(instances: List[Instance],
-                    sorting_keys: List[Tuple[str, str]],  # pylint: disable=invalid-sequence-index
-                    vocab: Vocabulary,
-                    padding_noise: float = 0.0) -> List[Instance]:
-    """
-    Sorts the instances by their padding lengths, using the keys in
-    ``sorting_keys`` (in the order in which they are provided).  ``sorting_keys`` is a list of
-    ``(field_name, padding_key)`` tuples.
-    """
-    instances_with_lengths = []
-    for instance in instances:
-        # Make sure instance is indexed before calling .get_padding
-        instance.index_fields(vocab)
-        padding_lengths = cast(Dict[str, Dict[str, float]], instance.get_padding_lengths())
-        if padding_noise > 0.0:
-            noisy_lengths = {}
-            for field_name, field_lengths in padding_lengths.items():
-                noisy_lengths[field_name] = add_noise_to_dict_values(field_lengths, padding_noise)
-            padding_lengths = noisy_lengths
-        instance_with_lengths = ([padding_lengths[field_name][padding_key]
-                                  for (field_name, padding_key) in sorting_keys],
-                                 instance)
-        instances_with_lengths.append(instance_with_lengths)
-    instances_with_lengths.sort(key=lambda x: x[0])
-    return [instance_with_lengths[-1] for instance_with_lengths in instances_with_lengths]
+logger = logging.getLogger(__name__)
 
 
 @DataIterator.register("bucket")
@@ -51,18 +22,21 @@ class BucketIterator(DataIterator):
     together, making computation more efficient (as less time is wasted on padded elements of the
     batch).
 
-    Parameters
-    ----------
-    sorting_keys : List[Tuple[str, str]]
+    # Parameters
+
+    sorting_keys : List[Tuple[str, str]], optional
         To bucket inputs into batches, we want to group the instances by padding length, so that we
         minimize the amount of padding necessary per batch. In order to do this, we need to know
         which fields need what type of padding, and in what order.
 
-        For example, ``[("sentence1", "num_tokens"), ("sentence2", "num_tokens"), ("sentence1",
-        "num_token_characters")]`` would sort a dataset first by the "num_tokens" of the
-        "sentence1" field, then by the "num_tokens" of the "sentence2" field, and finally by the
-        "num_token_characters" of the "sentence1" field.  TODO(mattg): we should have some
-        documentation somewhere that gives the standard padding keys used by different fields.
+        Specifying the right keys for this is a bit cryptic, so if this is not given we try to
+        auto-detect the right keys by iterating once through the data up front, reading all of the
+        padding keys and seeing which one has the longest length.  We use that one for padding.
+        This should give reasonable results in most cases.
+
+        When you need to specify this yourself, you can create an instance from your dataset and
+        call `Instance.get_padding_lengths()` to see a list of all keys used in your data.  You
+        should give one or more of those as the sorting keys here.
     padding_noise : float, optional (default=.1)
         When sorting by padding length, we add a bit of noise to the lengths, so that the sorting
         isn't deterministic.  This parameter determines how much noise we add, as a percentage of
@@ -73,7 +47,7 @@ class BucketIterator(DataIterator):
         you're going to run out of memory, you know it early, instead of waiting through the whole
         epoch to find out at the end that you're going to crash.
 
-        Note that if you specify ``max_instances_in_memory``, the first batch will only be the
+        Note that if you specify `max_instances_in_memory`, the first batch will only be the
         biggest from among the first "max instances in memory" instances.
     batch_size : int, optional, (default = 32)
         The size of each batch of instances yielded when calling the iterator.
@@ -81,7 +55,7 @@ class BucketIterator(DataIterator):
         See :class:`BasicIterator`.
     max_instances_in_memory : int, optional, (default = None)
         See :class:`BasicIterator`.
-    maximum_samples_per_batch : ``Tuple[str, int]``, (default = None)
+    maximum_samples_per_batch : `Tuple[str, int]`, (default = None)
         See :class:`BasicIterator`.
     skip_smaller_batches : bool, optional, (default = False)
         When the number of data samples is not dividable by `batch_size`,
@@ -89,26 +63,27 @@ class BucketIterator(DataIterator):
         If set to `True`, those smaller batches will be discarded.
     """
 
-    def __init__(self,
-                 sorting_keys: List[Tuple[str, str]],
-                 padding_noise: float = 0.1,
-                 biggest_batch_first: bool = False,
-                 batch_size: int = 32,
-                 instances_per_epoch: int = None,
-                 max_instances_in_memory: int = None,
-                 cache_instances: bool = False,
-                 track_epoch: bool = False,
-                 maximum_samples_per_batch: Tuple[str, int] = None,
-                 skip_smaller_batches: bool = False) -> None:
-        if not sorting_keys:
-            raise ConfigurationError("BucketIterator requires sorting_keys to be specified")
-
-        super().__init__(cache_instances=cache_instances,
-                         track_epoch=track_epoch,
-                         batch_size=batch_size,
-                         instances_per_epoch=instances_per_epoch,
-                         max_instances_in_memory=max_instances_in_memory,
-                         maximum_samples_per_batch=maximum_samples_per_batch)
+    def __init__(
+        self,
+        sorting_keys: List[Tuple[str, str]] = None,
+        padding_noise: float = 0.1,
+        biggest_batch_first: bool = False,
+        batch_size: int = 32,
+        instances_per_epoch: int = None,
+        max_instances_in_memory: int = None,
+        cache_instances: bool = False,
+        track_epoch: bool = False,
+        maximum_samples_per_batch: Tuple[str, int] = None,
+        skip_smaller_batches: bool = False,
+    ) -> None:
+        super().__init__(
+            cache_instances=cache_instances,
+            track_epoch=track_epoch,
+            batch_size=batch_size,
+            instances_per_epoch=instances_per_epoch,
+            max_instances_in_memory=max_instances_in_memory,
+            maximum_samples_per_batch=maximum_samples_per_batch,
+        )
         self._sorting_keys = sorting_keys
         self._padding_noise = padding_noise
         self._biggest_batch_first = biggest_batch_first
@@ -118,16 +93,18 @@ class BucketIterator(DataIterator):
     def _create_batches(self, instances: Iterable[Instance], shuffle: bool) -> Iterable[Batch]:
         for instance_list in self._memory_sized_lists(instances):
 
-            instance_list = sort_by_padding(instance_list,
-                                            self._sorting_keys,
-                                            self.vocab,
-                                            self._padding_noise)
+            instance_list = self._sort_by_padding(instance_list)
 
             batches = []
             excess: Deque[Instance] = deque()
             for batch_instances in lazy_groups_of(iter(instance_list), self._batch_size):
-                for possibly_smaller_batches in self._ensure_batch_is_sufficiently_small(batch_instances, excess):
-                    if self._skip_smaller_batches and len(possibly_smaller_batches) < self._batch_size:
+                for possibly_smaller_batches in self._ensure_batch_is_sufficiently_small(
+                    batch_instances, excess
+                ):
+                    if (
+                        self._skip_smaller_batches
+                        and len(possibly_smaller_batches) < self._batch_size
+                    ):
                         continue
                     batches.append(Batch(possibly_smaller_batches))
             if excess and (not self._skip_smaller_batches or len(excess) == self._batch_size):
@@ -150,3 +127,56 @@ class BucketIterator(DataIterator):
                 batches.insert(0, last_batch)
 
             yield from batches
+
+    def _sort_by_padding(self, instances: List[Instance]) -> List[Instance]:
+        """
+        Sorts the instances by their padding lengths, using the keys in
+        `sorting_keys` (in the order in which they are provided).  `sorting_keys` is a list of
+        `(field_name, padding_key)` tuples.
+        """
+        if not self._sorting_keys:
+            logger.info("No sorting keys given; trying to guess a good one")
+            self._guess_sorting_keys(instances)
+            logger.info(f"Using {self._sorting_keys} as the sorting keys")
+        instances_with_lengths = []
+        for instance in instances:
+            # Make sure instance is indexed before calling .get_padding
+            instance.index_fields(self.vocab)
+            padding_lengths = cast(Dict[str, Dict[str, float]], instance.get_padding_lengths())
+            if self._padding_noise > 0.0:
+                noisy_lengths = {}
+                for field_name, field_lengths in padding_lengths.items():
+                    noisy_lengths[field_name] = add_noise_to_dict_values(
+                        field_lengths, self._padding_noise
+                    )
+                padding_lengths = noisy_lengths
+            instance_with_lengths = (
+                [
+                    padding_lengths[field_name][padding_key]
+                    for (field_name, padding_key) in self._sorting_keys
+                ],
+                instance,
+            )
+            instances_with_lengths.append(instance_with_lengths)
+        instances_with_lengths.sort(key=lambda x: x[0])
+        return [instance_with_lengths[-1] for instance_with_lengths in instances_with_lengths]
+
+    def _guess_sorting_keys(self, instances: List[Instance]) -> None:
+        max_length = 0.0
+        longest_padding_key: Tuple[str, str] = None
+        for instance in instances:
+            instance.index_fields(self.vocab)
+            padding_lengths = cast(Dict[str, Dict[str, float]], instance.get_padding_lengths())
+            for field_name, field_padding in padding_lengths.items():
+                for padding_key, length in field_padding.items():
+                    if length > max_length:
+                        max_length = length
+                        longest_padding_key = (field_name, padding_key)
+        if not longest_padding_key:
+            # This shouldn't ever happen (you basically have to have an empty instance list), but
+            # just in case...
+            raise AssertionError(
+                "Found no field that needed padding; we are surprised you got this error, please "
+                "open an issue on github"
+            )
+        self._sorting_keys = [longest_padding_key]

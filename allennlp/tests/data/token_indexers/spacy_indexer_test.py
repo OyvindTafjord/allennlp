@@ -1,9 +1,9 @@
-# pylint: disable=no-self-use,invalid-name
 from allennlp.common.testing import AllenNlpTestCase
 from allennlp.data.token_indexers.spacy_indexer import SpacyTokenIndexer
 from allennlp.data.fields.text_field import TextField
 from allennlp.common.util import get_spacy_model
 from allennlp.data.vocabulary import Vocabulary
+
 
 class TestSpacyTokenIndexer(AllenNlpTestCase):
     def test_as_array_produces_token_array(self):
@@ -16,12 +16,12 @@ class TestSpacyTokenIndexer(AllenNlpTestCase):
         field.index(vocab)
 
         # Indexer functionality
-        array_dict = indexer.tokens_to_indices(tokens, vocab, "spacy")
-        assert len(array_dict["spacy"]) == 5
-        assert len(array_dict["spacy"][0]) == 96
+        array_dict = indexer.tokens_to_indices(tokens, vocab)
+        assert len(array_dict["tokens"]) == 5
+        assert len(array_dict["tokens"][0]) == 96
 
         # Check it also works with field
         lengths = field.get_padding_lengths()
         array_dict = field.as_tensor(lengths)
 
-        assert list(array_dict["spacy"].shape) == [5, 96]
+        assert list(array_dict["spacy"]["tokens"].shape) == [5, 96]

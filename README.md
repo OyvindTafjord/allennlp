@@ -1,4 +1,4 @@
-<p align="center"><img width="40%" src="doc/static/allennlp-logo-dark.png" /></p>
+<p align="center"><img width="40%" src="docs/img/allennlp-logo-dark.png" /></p>
 
 [![Build Status](http://build.allennlp.org/app/rest/builds/buildType:(id:AllenNLP_AllenNLPCommits)/statusIcon)](http://build.allennlp.org/viewType.html?buildTypeId=AllenNLP_AllenNLPCommits&guest=1)
 [![codecov](https://codecov.io/gh/allenai/allennlp/branch/master/graph/badge.svg)](https://codecov.io/gh/allenai/allennlp)
@@ -13,7 +13,7 @@ for developing state-of-the-art deep learning models on a wide variety of lingui
 * [Forum](https://discourse.allennlp.org)
 * [Documentation](https://allenai.github.io/allennlp-docs/)
 * [Contributing Guidelines](CONTRIBUTING.md)
-* [Model List](MODELS.md)
+* [Pretrained Models](https://github.com/allenai/allennlp-hub/blob/master/allennlp_hub/pretrained/allennlp_pretrained.py)
 * [Continuous Build](http://build.allennlp.org/)
 
 ## Package Overview
@@ -44,10 +44,6 @@ for developing state-of-the-art deep learning models on a wide variety of lingui
     <td> tensor utility functions, such as initializers and activation functions </td>
 </tr>
 <tr>
-    <td><b> allennlp.service </b></td>
-    <td> a web server to that can serve demos for your models </td>
-</tr>
-<tr>
     <td><b> allennlp.training </b></td>
     <td> functionality for training models </td>
 </tr>
@@ -71,16 +67,16 @@ environment you want to use, you can skip to the 'installing via pip' section.
 
 1.  [Download and install Conda](https://conda.io/projects/conda/en/latest/user-guide/install/index.html).
 
-2.  Create a Conda environment with Python 3.6
+2.  Create a Conda environment with Python 3.7
 
     ```bash
-    conda create -n allennlp python=3.6
+    conda create -n allennlp python=3.7
     ```
 
 3.  Activate the Conda environment. You will need to activate the Conda environment in each terminal in which you want to use AllenNLP.
 
     ```bash
-    source activate allennlp
+    conda activate allennlp
     ```
 
 #### Installing the library and dependencies
@@ -96,9 +92,6 @@ AllenNLP installs a script when you install the python package, meaning you can 
 
 You can now test your installation with `allennlp test-install`.
 
-_`pip` currently installs Pytorch for CUDA 9 only (or no GPU). If you require an older version,
-please visit https://pytorch.org/ and install the relevant pytorch binary._
-
 ### Installing using Docker
 
 Docker provides a virtual machine with everything set up to run AllenNLP--
@@ -111,10 +104,10 @@ just run the following command to get an environment that will run on either the
 
    ```bash
    mkdir -p $HOME/.allennlp/
-   docker run --rm -v $HOME/.allennlp:/root/.allennlp allennlp/allennlp:v0.8.5
+   docker run --rm -v $HOME/.allennlp:/root/.allennlp allennlp/allennlp:v0.9.0
    ```
 
-You can test the Docker environment with `docker run --rm -v $HOME/.allennlp:/root/.allennlp allennlp/allennlp:v0.8.5 test-install`.
+You can test the Docker environment with `docker run --rm -v $HOME/.allennlp:/root/.allennlp allennlp/allennlp:v0.9.0 test-install`.
 
 ### Installing from source
 
@@ -124,47 +117,49 @@ You can also install AllenNLP by cloning our git repository:
   git clone https://github.com/allenai/allennlp.git
   ```
 
-Create a Python 3.6 virtual environment, and install AllenNLP in `editable` mode by running:
+Create a Python 3.7 virtual environment, and install AllenNLP in `editable` mode by running:
 
   ```bash
   pip install --editable .
+  pip install -r dev-requirements.txt
   ```
 
 This will make `allennlp` available on your system but it will use the sources from the local clone
 you made of the source repository.
 
 You can test your installation with `allennlp test-install`.
-The full development environment also requires the JVM and `perl`,
-which must be installed separately.  `./scripts/verify.py` will run
-the full suite of tests used by our continuous build environment.
+`./scripts/verify.py` will run the full suite of tests used by our continuous build environment.
 
 ## Running AllenNLP
 
 Once you've installed AllenNLP, you can run the command-line interface either
 with the `allennlp` command (if you installed via `pip`) or `allennlp` (if you installed via source).
 
-```bash
+```
 $ allennlp
 Run AllenNLP
 
 optional arguments:
-  -h, --help    show this help message and exit
-  --version     show program's version number and exit
+  -h, --help     show this help message and exit
+  --version      show program's version number and exit
 
 Commands:
-
-    configure   Run the configuration wizard.
-    train       Train a model.
-    evaluate    Evaluate the specified model + dataset.
-    predict     Use a trained model to make predictions.
-    make-vocab  Create a vocabulary.
-    elmo        Create word vectors using a pretrained ELMo model.
-    fine-tune   Continue training a model on a new dataset.
-    dry-run     Create a vocabulary, compute dataset statistics and other
-                training utilities.
+  
+    train        Train a model.
+    evaluate     Evaluate the specified model + dataset.
+    predict      Use a trained model to make predictions.
+    elmo         Create word vectors using a pretrained ELMo model.
+    fine-tune    Continue training a model on a new dataset.
+    dry-run      Create a vocabulary, compute dataset statistics and other
+                 training utilities.
+    make-vocab   Create a vocabulary, compute dataset statistics and other
+                 training utilities.
     test-install
-                Run the unit tests.
-    find-lr     Find a learning rate range.
+                 Run the unit tests.
+    find-lr      Find a learning rate range.
+    print-results
+                 Print results from allennlp serialization directories to the
+                 console.
 ```
 
 ## Docker images
@@ -177,9 +172,7 @@ For various reasons you may need to create your own AllenNLP Docker image.
 The same image can be used either with a CPU or a GPU.
 
 First, you need to [install Docker](https://www.docker.com/get-started).
-Then run the following command
-(it will take some time, as it completely builds the
-environment needed to run AllenNLP.)
+Then run the following command (it will take some time, as it completely builds the environment needed to run AllenNLP.)
 
 ```bash
 docker build -f Dockerfile.pip --tag allennlp/allennlp:latest .
@@ -212,7 +205,7 @@ Pull requests (PRs) must have one approving review and no requested changes befo
 
 If you use AllenNLP in your research, please cite [AllenNLP: A Deep Semantic Natural Language Processing Platform](https://www.semanticscholar.org/paper/AllenNLP%3A-A-Deep-Semantic-Natural-Language-Platform-Gardner-Grus/a5502187140cdd98d76ae711973dbcdaf1fef46d).
 
-```
+```bibtex
 @inproceedings{Gardner2017AllenNLP,
   title={AllenNLP: A Deep Semantic Natural Language Processing Platform},
   author={Matt Gardner and Joel Grus and Mark Neumann and Oyvind Tafjord

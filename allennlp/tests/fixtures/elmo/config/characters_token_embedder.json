@@ -25,7 +25,7 @@
               "elmo": {
                 "type": "elmo_token_embedder",
                 "options_file": "allennlp/tests/fixtures/elmo/options.json",
-                "weight_file": "allennlp/tests/fixtures/elmo/lm_weights.hdf5",
+                "weight_file": "allennlp/tests/fixtures/elmo/lm_weights.hdf5"
               }
           }
       },
@@ -37,9 +37,11 @@
               "dropout": 0.5,
               "bidirectional": true
       },
-      "regularizer": [
-        ["transitions$", {"type": "l2", "alpha": 0.01}]
-      ]
+      "regularizer": {
+        "regexes": [
+          ["transitions$", {"type": "l2", "alpha": 0.01}]
+        ]
+      }
     },
     "iterator": {"type": "basic", "batch_size": 32},
     "trainer": {

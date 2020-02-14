@@ -13,33 +13,40 @@ class SequenceAccuracy(Metric):
     Sequence Top-K accuracy. Assumes integer labels, with
     each item to be classified having a single correct class.
     """
+
     def __init__(self) -> None:
         self.correct_count = 0.0
         self.total_count = 0.0
 
-    def __call__(self,
-                 predictions: torch.Tensor,
-                 gold_labels: torch.Tensor,
-                 mask: Optional[torch.Tensor] = None):
+    def __call__(
+        self,
+        predictions: torch.Tensor,
+        gold_labels: torch.Tensor,
+        mask: Optional[torch.Tensor] = None,
+    ):
         """
-        Parameters
-        ----------
-        predictions : ``torch.Tensor``, required.
+        # Parameters
+
+        predictions : `torch.Tensor`, required.
             A tensor of predictions of shape (batch_size, k, sequence_length).
-        gold_labels : ``torch.Tensor``, required.
+        gold_labels : `torch.Tensor`, required.
             A tensor of integer class label of shape (batch_size, sequence_length).
-        mask: ``torch.Tensor``, optional (default = None).
-            A masking tensor the same size as ``gold_labels``.
+        mask : `torch.Tensor`, optional (default = None).
+            A masking tensor the same size as `gold_labels`.
         """
         predictions, gold_labels, mask = self.unwrap_to_tensors(predictions, gold_labels, mask)
 
         # Some sanity checks.
         if gold_labels.dim() != predictions.dim() - 1:
-            raise ConfigurationError("gold_labels must have dimension == predictions.dim() - 1 but "
-                                     "found tensor of shape: {}".format(gold_labels.size()))
+            raise ConfigurationError(
+                "gold_labels must have dimension == predictions.dim() - 1 but "
+                "found tensor of shape: {}".format(gold_labels.size())
+            )
         if mask is not None and mask.size() != gold_labels.size():
-            raise ConfigurationError("mask must have the same size as predictions but "
-                                     "found tensor of shape: {}".format(mask.size()))
+            raise ConfigurationError(
+                "mask must have the same size as predictions but "
+                "found tensor of shape: {}".format(mask.size())
+            )
 
         k = predictions.size()[1]
         expanded_size = list(gold_labels.size())
@@ -64,8 +71,8 @@ class SequenceAccuracy(Metric):
 
     def get_metric(self, reset: bool = False):
         """
-        Returns
-        -------
+        # Returns
+
         The accumulated accuracy.
         """
         if self.total_count > 0:

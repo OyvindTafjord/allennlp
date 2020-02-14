@@ -6,7 +6,7 @@ local bert_model = "allennlp/tests/fixtures/bert/vocab.txt";
         "lazy": false,
         "type": "bert_classification_test",
         "tokenizer": {
-            "word_splitter": "bert-basic"
+            "type": "bert-basic"
         },
         "token_indexers": {
             "bert": {
@@ -20,10 +20,6 @@ local bert_model = "allennlp/tests/fixtures/bert/vocab.txt";
     "model": {
         "type": "basic_classifier",
         "text_field_embedder": {
-            "allow_unmatched_keys": true,
-            "embedder_to_indexer_map": {
-                "bert": ["bert", "bert-offsets"],
-            },
             "token_embedders": {
                 "bert": {
                     "type": "bert-pretrained",
@@ -41,7 +37,6 @@ local bert_model = "allennlp/tests/fixtures/bert/vocab.txt";
     },
     "iterator": {
         "type": "bucket",
-        "sorting_keys": [["tokens", "num_tokens"]],
         "batch_size": 5
     },
     "trainer": {
@@ -50,7 +45,9 @@ local bert_model = "allennlp/tests/fixtures/bert/vocab.txt";
             "lr": 0.001
         },
         "validation_metric": "+accuracy",
-        "num_serialized_models_to_keep": 1,
+        "checkpointer": {
+            "num_serialized_models_to_keep": 1
+        },
         "num_epochs": 3,
         "grad_norm": 10.0,
         "patience": 5,

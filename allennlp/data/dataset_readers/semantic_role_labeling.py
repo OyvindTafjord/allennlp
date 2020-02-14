@@ -2,7 +2,7 @@ import logging
 from typing import Dict, List, Iterable, Tuple, Any
 
 from overrides import overrides
-from pytorch_pretrained_bert.tokenization import BertTokenizer
+from transformers.tokenization_bert import BertTokenizer
 
 from allennlp.common.file_utils import cached_path
 from allennlp.data.dataset_readers.dataset_reader import DatasetReader
@@ -13,7 +13,7 @@ from allennlp.data.tokenizers import Token
 from allennlp.data.dataset_readers.dataset_utils import Ontonotes, OntonotesSentence
 
 
-logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
+logger = logging.getLogger(__name__)
 
 
 def _convert_tags_to_wordpiece_tags(tags: List[str], offsets: List[int]) -> List[str]:
@@ -24,15 +24,15 @@ def _convert_tags_to_wordpiece_tags(tags: List[str], offsets: List[int]) -> List
 
     This is only used if you pass a `bert_model_name` to the dataset reader below.
 
-    Parameters
-    ----------
+    # Parameters
+
     tags : `List[str]`
         The BIO formatted tags to convert to BIO tags for wordpieces
     offsets : `List[int]`
         The wordpiece offsets.
 
-    Returns
-    -------
+    # Returns
+
     The new BIO tags.
     """
     new_tags = []
@@ -61,7 +61,7 @@ def _convert_tags_to_wordpiece_tags(tags: List[str], offsets: List[int]) -> List
     return ["O"] + new_tags + ["O"]
 
 
-def _convert_verb_indices_to_wordpiece_indices(verb_indices: List[int], offsets: List[int]): # pylint: disable=invalid-name
+def _convert_verb_indices_to_wordpiece_indices(verb_indices: List[int], offsets: List[int]):
     """
     Converts binary verb indicators to account for a wordpiece tokenizer,
     extending/modifying BIO tags where appropriate to deal with words which
@@ -69,15 +69,15 @@ def _convert_verb_indices_to_wordpiece_indices(verb_indices: List[int], offsets:
 
     This is only used if you pass a `bert_model_name` to the dataset reader below.
 
-    Parameters
-    ----------
+    # Parameters
+
     verb_indices : `List[int]`
         The binary verb indicators, 0 for not a verb, 1 for verb.
     offsets : `List[int]`
         The wordpiece offsets.
 
-    Returns
-    -------
+    # Returns
+
     The new verb indices.
     """
     j = 0
@@ -99,37 +99,40 @@ class SrlReader(DatasetReader):
     for semantic role labelling. It returns a dataset of instances with the
     following fields:
 
-    tokens : ``TextField``
+    tokens : `TextField`
         The tokens in the sentence.
-    verb_indicator : ``SequenceLabelField``
+    verb_indicator : `SequenceLabelField`
         A sequence of binary indicators for whether the word is the verb for this frame.
-    tags : ``SequenceLabelField``
+    tags : `SequenceLabelField`
         A sequence of Propbank tags for the given verb in a BIO format.
 
-    Parameters
-    ----------
-    token_indexers : ``Dict[str, TokenIndexer]``, optional
+    # Parameters
+
+    token_indexers : `Dict[str, TokenIndexer]`, optional
         We similarly use this for both the premise and the hypothesis.  See :class:`TokenIndexer`.
-        Default is ``{"tokens": SingleIdTokenIndexer()}``.
-    domain_identifier: ``str``, (default = None)
+        Default is `{"tokens": SingleIdTokenIndexer()}`.
+    domain_identifier : `str`, (default = None)
         A string denoting a sub-domain of the Ontonotes 5.0 dataset to use. If present, only
         conll files under paths containing this domain identifier will be processed.
-    bert_model_name : ``Optional[str]``, (default = None)
+    bert_model_name : `Optional[str]`, (default = None)
         The BERT model to be wrapped. If you specify a bert_model here, then we will
         assume you want to use BERT throughout; we will use the bert tokenizer,
         and will expand your tags and verb indicators accordingly. If not,
         the tokens will be indexed as normal with the token_indexers.
 
-    Returns
-    -------
-    A ``Dataset`` of ``Instances`` for Semantic Role Labelling.
+    # Returns
+
+    A `Dataset` of `Instances` for Semantic Role Labelling.
     """
-    def __init__(self,
-                 token_indexers: Dict[str, TokenIndexer] = None,
-                 domain_identifier: str = None,
-                 lazy: bool = False,
-                 bert_model_name: str = None) -> None:
-        super().__init__(lazy)
+
+    def __init__(
+        self,
+        token_indexers: Dict[str, TokenIndexer] = None,
+        domain_identifier: str = None,
+        bert_model_name: str = None,
+        **kwargs,
+    ) -> None:
+        super().__init__(**kwargs)
         self._token_indexers = token_indexers or {"tokens": SingleIdTokenIndexer()}
         self._domain_identifier = domain_identifier
 
@@ -140,7 +143,9 @@ class SrlReader(DatasetReader):
             self.bert_tokenizer = None
             self.lowercase_input = False
 
-    def _wordpiece_tokenize_input(self, tokens: List[str]) -> Tuple[List[str], List[int], List[int]]:
+    def _wordpiece_tokenize_input(
+        self, tokens: List[str]
+    ) -> Tuple[List[str], List[int], List[int]]:
         """
         Convert a list of tokens to wordpiece tokens and offsets, as well as adding
         BERT CLS and SEP tokens to the begining and end of the sentence.
@@ -163,8 +168,8 @@ class SrlReader(DatasetReader):
         _first_ wordpiece label to be the label for the token, because otherwise
         we may end up with invalid tag sequences (we cannot start a new tag with an I).
 
-        Returns
-        -------
+        # Returns
+
         wordpieces : List[str]
             The BERT wordpieces from the words in the sentence.
         end_offsets : List[int]
@@ -198,9 +203,14 @@ class SrlReader(DatasetReader):
         ontonotes_reader = Ontonotes()
         logger.info("Reading SRL instances from dataset files at: %s", file_path)
         if self._domain_identifier is not None:
-            logger.info("Filtering to only include file paths containing the %s domain", self._domain_identifier)
+            logger.info(
+                "Filtering to only include file paths containing the %s domain",
+                self._domain_identifier,
+            )
 
-        for sentence in self._ontonotes_subset(ontonotes_reader, file_path, self._domain_identifier):
+        for sentence in self._ontonotes_subset(
+            ontonotes_reader, file_path, self._domain_identifier
+        ):
             tokens = [Token(t) for t in sentence.words]
             if not sentence.srl_frames:
                 # Sentence contains no predicates.
@@ -213,9 +223,9 @@ class SrlReader(DatasetReader):
                     yield self.text_to_instance(tokens, verb_indicator, tags)
 
     @staticmethod
-    def _ontonotes_subset(ontonotes_reader: Ontonotes,
-                          file_path: str,
-                          domain_identifier: str) -> Iterable[OntonotesSentence]:
+    def _ontonotes_subset(
+        ontonotes_reader: Ontonotes, file_path: str, domain_identifier: str
+    ) -> Iterable[OntonotesSentence]:
         """
         Iterates over the Ontonotes 5.0 dataset using an optional domain identifier.
         If the domain identifier is present, only examples which contain the domain
@@ -225,25 +235,28 @@ class SrlReader(DatasetReader):
             if domain_identifier is None or f"/{domain_identifier}/" in conll_file:
                 yield from ontonotes_reader.sentence_iterator(conll_file)
 
-    def text_to_instance(self,  # type: ignore
-                         tokens: List[Token],
-                         verb_label: List[int],
-                         tags: List[str] = None) -> Instance:
+    def text_to_instance(  # type: ignore
+        self, tokens: List[Token], verb_label: List[int], tags: List[str] = None
+    ) -> Instance:
         """
         We take `pre-tokenized` input here, along with a verb label.  The verb label should be a
         one-hot binary vector, the same length as the tokens, indicating the position of the verb
         to find arguments for.
         """
-        # pylint: disable=arguments-differ
+
         metadata_dict: Dict[str, Any] = {}
         if self.bert_tokenizer is not None:
-            wordpieces, offsets, start_offsets = self._wordpiece_tokenize_input([t.text for t in tokens])
+            wordpieces, offsets, start_offsets = self._wordpiece_tokenize_input(
+                [t.text for t in tokens]
+            )
             new_verbs = _convert_verb_indices_to_wordpiece_indices(verb_label, offsets)
             metadata_dict["offsets"] = start_offsets
             # In order to override the indexing mechanism, we need to set the `text_id`
             # attribute directly. This causes the indexing to use this id.
-            text_field = TextField([Token(t, text_id=self.bert_tokenizer.vocab[t]) for t in wordpieces],
-                                   token_indexers=self._token_indexers)
+            text_field = TextField(
+                [Token(t, text_id=self.bert_tokenizer.vocab[t]) for t in wordpieces],
+                token_indexers=self._token_indexers,
+            )
             verb_indicator = SequenceLabelField(new_verbs, text_field)
 
         else:
@@ -251,10 +264,10 @@ class SrlReader(DatasetReader):
             verb_indicator = SequenceLabelField(verb_label, text_field)
 
         fields: Dict[str, Field] = {}
-        fields['tokens'] = text_field
-        fields['verb_indicator'] = verb_indicator
+        fields["tokens"] = text_field
+        fields["verb_indicator"] = verb_indicator
 
-        if all([x == 0 for x in verb_label]):
+        if all(x == 0 for x in verb_label):
             verb = None
             verb_index = None
         else:
@@ -268,9 +281,9 @@ class SrlReader(DatasetReader):
         if tags:
             if self.bert_tokenizer is not None:
                 new_tags = _convert_tags_to_wordpiece_tags(tags, offsets)
-                fields['tags'] = SequenceLabelField(new_tags, text_field)
+                fields["tags"] = SequenceLabelField(new_tags, text_field)
             else:
-                fields['tags'] = SequenceLabelField(tags, text_field)
+                fields["tags"] = SequenceLabelField(tags, text_field)
             metadata_dict["gold_tags"] = tags
 
         fields["metadata"] = MetadataField(metadata_dict)

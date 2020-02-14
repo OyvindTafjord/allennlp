@@ -9,26 +9,28 @@ class Metric(Registrable):
     A very general abstract class representing a metric which can be
     accumulated.
     """
-    def __call__(self,
-                 predictions: torch.Tensor,
-                 gold_labels: torch.Tensor,
-                 mask: Optional[torch.Tensor]):
+
+    def __call__(
+        self, predictions: torch.Tensor, gold_labels: torch.Tensor, mask: Optional[torch.Tensor]
+    ):
         """
-        Parameters
-        ----------
-        predictions : ``torch.Tensor``, required.
+        # Parameters
+
+        predictions : `torch.Tensor`, required.
             A tensor of predictions.
-        gold_labels : ``torch.Tensor``, required.
+        gold_labels : `torch.Tensor`, required.
             A tensor corresponding to some gold label to evaluate against.
-        mask: ``torch.Tensor``, optional (default = None).
+        mask : `torch.Tensor`, optional (default = None).
             A mask can be passed, in order to deal with metrics which are
             computed over potentially padded elements, such as sequence labels.
         """
         raise NotImplementedError
 
-    def get_metric(self, reset: bool) -> Union[float, Tuple[float, ...], Dict[str, float], Dict[str, List[float]]]:
+    def get_metric(
+        self, reset: bool
+    ) -> Union[float, Tuple[float, ...], Dict[str, float], Dict[str, List[float]]]:
         """
-        Compute and return the metric. Optionally also call :func:`self.reset`.
+        Compute and return the metric. Optionally also call `self.reset`.
         """
         raise NotImplementedError
 

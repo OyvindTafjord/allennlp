@@ -15,7 +15,7 @@ from allennlp.data.instance import Instance
 from allennlp.data.token_indexers import SingleIdTokenIndexer, TokenIndexer
 from allennlp.data.tokenizers import Token
 
-logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
+logger = logging.getLogger(__name__)
 
 
 def get_file_paths(pathname: str, languages: List[str]):
@@ -24,21 +24,21 @@ def get_file_paths(pathname: str, languages: List[str]):
     Filenames are assumed to have the language identifier followed by a dash
     as a prefix (e.g. en-universal.conll).
 
-    Parameters
-    ----------
-    pathname :  ``str``, required.
+    # Parameters
+
+    pathname :  `str`, required.
         An absolute or relative pathname (can contain shell-style wildcards)
-    languages : ``List[str]``, required
+    languages : `List[str]`, required
         The language identifiers to use.
 
-    Returns
-    -------
+    # Returns
+
     A list of tuples (language id, file path).
     """
     paths = []
     for file_path in glob.glob(pathname):
         base = os.path.splitext(os.path.basename(file_path))[0]
-        lang_id = base.split('-')[0]
+        lang_id = base.split("-")[0]
         if lang_id in languages:
             paths.append((lang_id, file_path))
 
@@ -59,37 +59,40 @@ class UniversalDependenciesMultiLangDatasetReader(DatasetReader):
     this behaviour for the first pass (could be useful for a single full path
     over the dataset in order to generate a vocabulary).
 
-    Notice: when using the alternate option, one should also use the ``instances_per_epoch``
+    Notice: when using the alternate option, one should also use the `instances_per_epoch`
     option for the iterator. Otherwise, each epoch will loop infinitely.
 
-    Parameters
-    ----------
-    languages : ``List[str]``, required
+    # Parameters
+
+    languages : `List[str]`, required
         The language identifiers to use.
-    token_indexers : ``Dict[str, TokenIndexer]``, optional (default=``{"tokens": SingleIdTokenIndexer()}``)
+    token_indexers : `Dict[str, TokenIndexer]`, optional (default=`{"tokens": SingleIdTokenIndexer()}`)
         The token indexers to be applied to the words TextField.
-    use_language_specific_pos : ``bool``, optional (default = False)
+    use_language_specific_pos : `bool`, optional (default = False)
         Whether to use UD POS tags, or to use the language specific POS tags
         provided in the conllu format.
-    alternate : ``bool``, optional (default = True)
+    alternate : `bool`, optional (default = True)
         Whether to alternate between input files.
-    is_first_pass_for_vocab : ``bool``, optional (default = True)
+    is_first_pass_for_vocab : `bool`, optional (default = True)
         Whether the first pass will be for generating the vocab. If true,
         the first pass will run over the entire dataset of each file (even if alternate is on).
-    instances_per_file : ``int``, optional (default = 32)
+    instances_per_file : `int`, optional (default = 32)
         The amount of consecutive cases to sample from each input file when alternating.
     """
-    def __init__(self,
-                 languages: List[str],
-                 token_indexers: Dict[str, TokenIndexer] = None,
-                 use_language_specific_pos: bool = False,
-                 lazy: bool = False,
-                 alternate: bool = True,
-                 is_first_pass_for_vocab: bool = True,
-                 instances_per_file: int = 32) -> None:
-        super().__init__(lazy)
+
+    def __init__(
+        self,
+        languages: List[str],
+        token_indexers: Dict[str, TokenIndexer] = None,
+        use_language_specific_pos: bool = False,
+        alternate: bool = True,
+        is_first_pass_for_vocab: bool = True,
+        instances_per_file: int = 32,
+        **kwargs,
+    ) -> None:
+        super().__init__(**kwargs)
         self._languages = languages
-        self._token_indexers = token_indexers or {'tokens': SingleIdTokenIndexer()}
+        self._token_indexers = token_indexers or {"tokens": SingleIdTokenIndexer()}
         self._use_language_specific_pos = use_language_specific_pos
 
         self._is_first_pass_for_vocab = is_first_pass_for_vocab
@@ -100,16 +103,18 @@ class UniversalDependenciesMultiLangDatasetReader(DatasetReader):
         self._iterators: List[Tuple[str, Iterator[Any]]] = None
 
     def _read_one_file(self, lang: str, file_path: str):
-        with open(file_path, 'r') as conllu_file:
-            logger.info("Reading UD instances for %s language from conllu dataset at: %s", lang, file_path)
+        with open(file_path, "r") as conllu_file:
+            logger.info(
+                "Reading UD instances for %s language from conllu dataset at: %s", lang, file_path
+            )
 
             for annotation in parse_incr(conllu_file):
                 # CoNLLU annotations sometimes add back in words that have been elided
                 # in the original sentence; we remove these, as we're just predicting
                 # dependencies for the original sentence.
-                # We filter by None here as elided words have a non-integer word id,
-                # and are replaced with None by the conllu python library.
-                annotation = [x for x in annotation if x["id"] is not None]
+                # We filter by integers here as elided words have a non-integer word id,
+                # as parsed by the conllu python library.
+                annotation = [x for x in annotation if isinstance(x["id"], int)]
 
                 heads = [x["head"] for x in annotation]
                 tags = [x["deprel"] for x in annotation]
@@ -124,16 +129,19 @@ class UniversalDependenciesMultiLangDatasetReader(DatasetReader):
     def _read(self, file_path: str):
         file_paths = get_file_paths(file_path, self._languages)
         if (self._is_first_pass and self._is_first_pass_for_vocab) or (not self._alternate):
-            iterators = [iter(self._read_one_file(lang, file_path))
-                         for (lang, file_path) in file_paths]
+            iterators = [
+                iter(self._read_one_file(lang, file_path)) for (lang, file_path) in file_paths
+            ]
             self._is_first_pass = False
             for inst in itertools.chain(*iterators):
                 yield inst
 
         else:
             if self._iterators is None:
-                self._iterators = [(lang, iter(self._read_one_file(lang, file_path)))
-                                   for (lang, file_path) in file_paths]
+                self._iterators = [
+                    (lang, iter(self._read_one_file(lang, file_path)))
+                    for (lang, file_path) in file_paths
+                ]
             num_files = len(file_paths)
             while True:
                 ind = np.random.randint(num_files)
@@ -148,28 +156,30 @@ class UniversalDependenciesMultiLangDatasetReader(DatasetReader):
                         yield lang_iter.__next__()
 
     @overrides
-    def text_to_instance(self,  # type: ignore
-                         lang: str,
-                         words: List[str],
-                         upos_tags: List[str],
-                         dependencies: List[Tuple[str, int]] = None) -> Instance:
-        # pylint: disable=arguments-differ
+    def text_to_instance(
+        self,  # type: ignore
+        lang: str,
+        words: List[str],
+        upos_tags: List[str],
+        dependencies: List[Tuple[str, int]] = None,
+    ) -> Instance:
+
         """
-        Parameters
-        ----------
-        lang : ``str``, required.
+        # Parameters
+
+        lang : `str`, required.
             The language identifier.
-        words : ``List[str]``, required.
+        words : `List[str]`, required.
             The words in the sentence to be encoded.
-        upos_tags : ``List[str]``, required.
+        upos_tags : `List[str]`, required.
             The universal dependencies POS tags for each word.
-        dependencies ``List[Tuple[str, int]]``, optional (default = None)
+        dependencies `List[Tuple[str, int]]`, optional (default = None)
             A list of  (head tag, head index) tuples. Indices are 1 indexed,
             meaning an index of 0 corresponds to that word being the root of
             the dependency tree.
 
-        Returns
-        -------
+        # Returns
+
         An instance containing words, upos tags, dependency head tags and head
         indices as fields. The language identifier is stored in the metadata.
         """
@@ -181,12 +191,12 @@ class UniversalDependenciesMultiLangDatasetReader(DatasetReader):
         if dependencies is not None:
             # We don't want to expand the label namespace with an additional dummy token, so we'll
             # always give the 'ROOT_HEAD' token a label of 'root'.
-            fields["head_tags"] = SequenceLabelField([x[0] for x in dependencies],
-                                                     tokens,
-                                                     label_namespace="head_tags")
-            fields["head_indices"] = SequenceLabelField([int(x[1]) for x in dependencies],
-                                                        tokens,
-                                                        label_namespace="head_index_tags")
+            fields["head_tags"] = SequenceLabelField(
+                [x[0] for x in dependencies], tokens, label_namespace="head_tags"
+            )
+            fields["head_indices"] = SequenceLabelField(
+                [int(x[1]) for x in dependencies], tokens, label_namespace="head_index_tags"
+            )
 
         fields["metadata"] = MetadataField({"words": words, "pos": upos_tags, "lang": lang})
         return Instance(fields)

@@ -6,25 +6,25 @@ from typing import Iterable, Iterator, List, Optional
 from torch.multiprocessing import JoinableQueue, Process, Queue, get_logger
 
 from allennlp.common.checks import ConfigurationError
-from allennlp.data.dataset import Batch
+from allennlp.data.batch import Batch
 from allennlp.data.dataset_readers.multiprocess_dataset_reader import QIterable
 from allennlp.data.instance import Instance
 from allennlp.data.iterators.data_iterator import DataIterator, TensorDict
 from allennlp.data.vocabulary import Vocabulary
 
-logger = get_logger()  # pylint: disable=invalid-name
+logger = get_logger()
 logger.setLevel(logging.INFO)
 
-def _create_tensor_dicts_from_queue(input_queue: Queue,
-                                    output_queue: Queue,
-                                    iterator: DataIterator,
-                                    shuffle: bool,
-                                    index: int) -> None:
+
+def _create_tensor_dicts_from_queue(
+    input_queue: Queue, output_queue: Queue, iterator: DataIterator, shuffle: bool, index: int
+) -> None:
     """
-    Pulls instances from ``input_queue``, converts them into ``TensorDict``s
-    using ``iterator``, and puts them on the ``output_queue``.
+    Pulls instances from `input_queue`, converts them into `TensorDict`s
+    using `iterator`, and puts them on the `output_queue`.
     """
     logger.info(f"Iterator worker: {index} PID: {os.getpid()}")
+
     def instances() -> Iterator[Instance]:
         instance = input_queue.get()
         while instance is not None:
@@ -45,16 +45,16 @@ def _create_tensor_dicts_from_queue(input_queue: Queue,
     # on a Mac alone is not sufficient.
     output_queue.join()
 
-def _create_tensor_dicts_from_qiterable(qiterable: QIterable,
-                                        output_queue: Queue,
-                                        iterator: DataIterator,
-                                        shuffle: bool,
-                                        index: int) -> None:
+
+def _create_tensor_dicts_from_qiterable(
+    qiterable: QIterable, output_queue: Queue, iterator: DataIterator, shuffle: bool, index: int
+) -> None:
     """
-    Pulls instances from ``qiterable.output_queue``, converts them into
-    ``TensorDict``s using ``iterator``, and puts them on the ``output_queue``.
+    Pulls instances from `qiterable.output_queue`, converts them into
+    `TensorDict`s using `iterator`, and puts them on the `output_queue`.
     """
     logger.info(f"Iterator worker: {index} PID: {os.getpid()}")
+
     def instances() -> Iterator[Instance]:
         while qiterable.num_active_workers.value > 0 or qiterable.num_inflight_items.value > 0:
             while True:
@@ -73,10 +73,10 @@ def _create_tensor_dicts_from_qiterable(qiterable: QIterable,
     # See the note above in _create_tensor_dicts_from_queue.
     output_queue.join()
 
-def _queuer(instances: Iterable[Instance],
-            input_queue: Queue,
-            num_workers: int,
-            num_epochs: Optional[int]) -> None:
+
+def _queuer(
+    instances: Iterable[Instance], input_queue: Queue, num_workers: int, num_epochs: Optional[int]
+) -> None:
     """
     Reads Instances from the iterable and puts them in the input_queue.
     """
@@ -93,28 +93,29 @@ def _queuer(instances: Iterable[Instance],
     for _ in range(num_workers):
         input_queue.put(None)
 
+
 @DataIterator.register("multiprocess")
 class MultiprocessIterator(DataIterator):
     """
-    Wraps another ```DataIterator``` and uses it to generate tensor dicts
+    Wraps another `DataIterator` and uses it to generate tensor dicts
     using multiple processes.
 
-    Parameters
-    ----------
-    base_iterator : ``DataIterator``
-        The ``DataIterator`` for generating tensor dicts. It will be shared among
+    # Parameters
+
+    base_iterator : `DataIterator`
+        The `DataIterator` for generating tensor dicts. It will be shared among
         processes, so it should not be stateful in any way.
-    num_workers : ``int``, optional (default = 1)
+    num_workers : `int`, optional (default = 1)
         The number of processes used for generating tensor dicts.
-    output_queue_size: ``int``, optional (default = 1000)
+    output_queue_size : `int`, optional (default = 1000)
         The size of the output queue on which tensor dicts are placed to be consumed.
         You might need to increase this if you're generating tensor dicts too quickly.
     """
-    def __init__(self,
-                 base_iterator: DataIterator,
-                 num_workers: int = 1,
-                 output_queue_size: int = 1000) -> None:
-        # pylint: disable=protected-access
+
+    def __init__(
+        self, base_iterator: DataIterator, num_workers: int = 1, output_queue_size: int = 1000
+    ) -> None:
+
         super().__init__()
         self.num_workers = num_workers
         self.batch_size = base_iterator._batch_size
@@ -138,18 +139,18 @@ class MultiprocessIterator(DataIterator):
     def index_with(self, vocab: Vocabulary):
         self.iterator.index_with(vocab)
 
-    def _call_with_instances(self,
-                             instances: Iterable[Instance],
-                             num_epochs: int,
-                             shuffle: bool) -> Iterator[TensorDict]:
+    def _call_with_instances(
+        self, instances: Iterable[Instance], num_epochs: int, shuffle: bool
+    ) -> Iterator[TensorDict]:
         # JoinableQueue needed here as sharing tensors across processes
         # requires that the creating process not exit prematurely.
         output_queue = JoinableQueue(self.output_queue_size)
         input_queue = Queue(self.output_queue_size * self.batch_size)
 
         # Start process that populates the queue.
-        self.queuer = Process(target=_queuer,
-                              args=(instances, input_queue, self.num_workers, num_epochs))
+        self.queuer = Process(
+            target=_queuer, args=(instances, input_queue, self.num_workers, num_epochs)
+        )
         self.queuer.start()
 
         # Start the tensor-dict workers.
@@ -177,10 +178,9 @@ class MultiprocessIterator(DataIterator):
             self.queuer.join()
             self.queuer = None
 
-    def _call_with_qiterable(self,
-                             qiterable: QIterable,
-                             num_epochs: int,
-                             shuffle: bool) -> Iterator[TensorDict]:
+    def _call_with_qiterable(
+        self, qiterable: QIterable, num_epochs: int, shuffle: bool
+    ) -> Iterator[TensorDict]:
         # JoinableQueue needed here as sharing tensors across processes
         # requires that the creating tensor not exit prematurely.
         output_queue = JoinableQueue(self.output_queue_size)
@@ -211,15 +211,16 @@ class MultiprocessIterator(DataIterator):
 
             qiterable.join()
 
-    def __call__(self,
-                 instances: Iterable[Instance],
-                 num_epochs: int = None,
-                 shuffle: bool = True) -> Iterator[TensorDict]:
+    def __call__(
+        self, instances: Iterable[Instance], num_epochs: int = None, shuffle: bool = True
+    ) -> Iterator[TensorDict]:
 
         # If you run it forever, the multiprocesses won't shut down correctly.
         # TODO(joelgrus) find a solution for this
         if num_epochs is None:
-            raise ConfigurationError("Multiprocess Iterator must be run for a fixed number of epochs")
+            raise ConfigurationError(
+                "Multiprocess Iterator must be run for a fixed number of epochs"
+            )
 
         if isinstance(instances, QIterable):
             return self._call_with_qiterable(instances, num_epochs, shuffle)

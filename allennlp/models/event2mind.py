@@ -11,44 +11,43 @@ from torch import nn
 import torch.nn.functional as F
 
 from allennlp.common.util import START_SYMBOL, END_SYMBOL
-from allennlp.data.vocabulary import Vocabulary
+from allennlp.data import TextFieldTensors, Vocabulary
 from allennlp.modules import Seq2VecEncoder, TextFieldEmbedder
 from allennlp.modules.token_embedders import Embedding
 from allennlp.models.model import Model
 from allennlp.nn.beam_search import BeamSearch
 from allennlp.nn.util import get_text_field_mask, sequence_cross_entropy_with_logits
-from allennlp.nn import RegularizerApplicator
 from allennlp.training.metrics import UnigramRecall
 
 
 @Model.register("event2mind")
 class Event2Mind(Model):
     """
-    This ``Event2Mind`` class is a :class:`Model` which takes an event
+    This `Event2Mind` class is a `Model` which takes an event
     sequence, encodes it, and then uses the encoded representation to decode
     several mental state sequences.
 
-    It is based on `the paper by Rashkin et al.
-    <https://www.semanticscholar.org/paper/Event2Mind/b89f8a9b2192a8f2018eead6b135ed30a1f2144d>`_
+    It is based on [the paper by Rashkin et al.](
+    https://www.semanticscholar.org/paper/Event2Mind/b89f8a9b2192a8f2018eead6b135ed30a1f2144d).
 
-    Parameters
-    ----------
-    vocab : ``Vocabulary``, required
+    # Parameters
+
+    vocab : `Vocabulary`, required
         Vocabulary containing source and target vocabularies. They may be under the same namespace
-        (``tokens``) or the target tokens can have a different namespace, in which case it needs to
-        be specified as ``target_namespace``.
-    source_embedder : ``TextFieldEmbedder``, required
+        (`tokens`) or the target tokens can have a different namespace, in which case it needs to
+        be specified as `target_namespace`.
+    source_embedder : `TextFieldEmbedder`, required
         Embedder for source side sequences.
     embedding_dropout: float, required
         The amount of dropout to apply after the source tokens have been embedded.
-    encoder : ``Seq2VecEncoder``, required
+    encoder : `Seq2VecEncoder`, required
         The encoder of the "encoder/decoder" model.
     max_decoding_steps : int, required
         Length of decoded sequences.
     beam_size : int, optional (default = 10)
         The width of the beam search.
-    target_names: ``List[str]``, optional, (default = ['xintent', 'xreact', 'oreact'])
-        Names of the target fields matching those in the ``Instance`` objects.
+    target_names : `List[str]`, optional, (default = ['xintent', 'xreact', 'oreact'])
+        Names of the target fields matching those in the `Instance` objects.
     target_namespace : str, optional (default = 'tokens')
         If the target side vocabulary is different from the source side's, you need to specify the
         target's namespace here. If not, we'll assume it is "tokens", which is also the default
@@ -56,21 +55,22 @@ class Event2Mind(Model):
     target_embedding_dim : int, optional (default = source_embedding_dim)
         You can specify an embedding dimensionality for the target side. If not, we'll use the same
         value as the source embedder's.
-    regularizer : ``RegularizerApplicator``, optional (default=``None``)
-        If provided, will be used to calculate the regularization penalty during training.
     """
-    def __init__(self,
-                 vocab: Vocabulary,
-                 source_embedder: TextFieldEmbedder,
-                 embedding_dropout: float,
-                 encoder: Seq2VecEncoder,
-                 max_decoding_steps: int,
-                 beam_size: int = 10,
-                 target_names: List[str] = None,
-                 target_namespace: str = "tokens",
-                 target_embedding_dim: int = None,
-                 regularizer: Optional[RegularizerApplicator] = None) -> None:
-        super().__init__(vocab, regularizer)
+
+    def __init__(
+        self,
+        vocab: Vocabulary,
+        source_embedder: TextFieldEmbedder,
+        embedding_dropout: float,
+        encoder: Seq2VecEncoder,
+        max_decoding_steps: int,
+        beam_size: int = 10,
+        target_names: List[str] = None,
+        target_namespace: str = "tokens",
+        target_embedding_dim: int = None,
+        **kwargs,
+    ) -> None:
+        super().__init__(vocab, **kwargs)
         target_names = target_names or ["xintent", "xreact", "oreact"]
 
         # Note: The original tweaks the embeddings for "personx" to be the mean
@@ -100,38 +100,30 @@ class Event2Mind(Model):
         self._states = ModuleDict()
         for name in target_names:
             self._states[name] = StateDecoder(
-                    num_classes,
-                    target_embedding_dim,
-                    self._decoder_output_dim
+                num_classes, target_embedding_dim, self._decoder_output_dim
             )
 
         self._beam_search = BeamSearch(
-                self._end_index,
-                beam_size=beam_size,
-                max_steps=max_decoding_steps
+            self._end_index, beam_size=beam_size, max_steps=max_decoding_steps
         )
 
-    def _update_recall(self,
-                       all_top_k_predictions: torch.Tensor,
-                       target_tokens: Dict[str, torch.LongTensor],
-                       target_recall: UnigramRecall) -> None:
-        targets = target_tokens["tokens"]
+    def _update_recall(
+        self,
+        all_top_k_predictions: torch.Tensor,
+        target_tokens: TextFieldTensors,
+        target_recall: UnigramRecall,
+    ) -> None:
+        targets = target_tokens["tokens"]["tokens"]
         target_mask = get_text_field_mask(target_tokens)
         # See comment in _get_loss.
         # TODO(brendanr): Do we need contiguous here?
         relevant_targets = targets[:, 1:].contiguous()
         relevant_mask = target_mask[:, 1:].contiguous()
-        target_recall(
-                all_top_k_predictions,
-                relevant_targets,
-                relevant_mask,
-                self._end_index
-        )
+        target_recall(all_top_k_predictions, relevant_targets, relevant_mask, self._end_index)
 
-    def _get_num_decoding_steps(self,
-                                target_tokens: Optional[Dict[str, torch.LongTensor]]) -> int:
+    def _get_num_decoding_steps(self, target_tokens: Optional[TextFieldTensors]) -> int:
         if target_tokens:
-            targets = target_tokens["tokens"]
+            targets = target_tokens["tokens"]["tokens"]
             target_sequence_length = targets.size()[1]
             # The last input from the target is either padding or the end
             # symbol.  Either way, we don't have to process it. (To be clear,
@@ -142,23 +134,25 @@ class Event2Mind(Model):
             return self._max_decoding_steps
 
     @overrides
-    def forward(self,  # type: ignore
-                source: Dict[str, torch.LongTensor],
-                **target_tokens: Dict[str, Dict[str, torch.LongTensor]]) -> Dict[str, torch.Tensor]:
-        # pylint: disable=arguments-differ
+    def forward(
+        self,  # type: ignore
+        source: TextFieldTensors,
+        **target_tokens: Dict[str, TextFieldTensors],
+    ) -> Dict[str, torch.Tensor]:
+
         """
         Decoder logic for producing the target sequences.
 
-        Parameters
-        ----------
-        source : ``Dict[str, torch.LongTensor]``
-            The output of ``TextField.as_array()`` applied on the source
-            ``TextField``. This will be passed through a ``TextFieldEmbedder``
+        # Parameters
+
+        source : `TextFieldTensors`
+            The output of `TextField.as_array()` applied on the source
+            `TextField`. This will be passed through a `TextFieldEmbedder`
             and then through an encoder.
-        target_tokens : ``Dict[str, Dict[str, torch.LongTensor]]``:
-            Dictionary from name to output of ``Textfield.as_array()`` applied
-            on target ``TextField``. We assume that the target tokens are also
-            represented as a ``TextField``.
+        target_tokens : `Dict[str, TextFieldTensors]`:
+            Dictionary from name to output of `Textfield.as_array()` applied
+            on target `TextField`. We assume that the target tokens are also
+            represented as a `TextField`.
         """
         # (batch_size, input_sequence_length, embedding_dim)
         embedded_input = self._embedding_dropout(self._source_embedder(source))
@@ -172,16 +166,18 @@ class Event2Mind(Model):
             if target_tokens.keys() != self._states.keys():
                 target_only = target_tokens.keys() - self._states.keys()
                 states_only = self._states.keys() - target_tokens.keys()
-                raise Exception("Mismatch between target_tokens and self._states. Keys in " +
-                                f"targets only: {target_only} Keys in states only: {states_only}")
+                raise Exception(
+                    "Mismatch between target_tokens and self._states. Keys in "
+                    + f"targets only: {target_only} Keys in states only: {states_only}"
+                )
             total_loss = 0
             for name, state in self._states.items():
                 loss = self.greedy_search(
-                        final_encoder_output=final_encoder_output,
-                        target_tokens=target_tokens[name],
-                        target_embedder=state.embedder,
-                        decoder_cell=state.decoder_cell,
-                        output_projection_layer=state.output_projection_layer
+                    final_encoder_output=final_encoder_output,
+                    target_tokens=target_tokens[name],
+                    target_embedder=state.embedder,
+                    decoder_cell=state.decoder_cell,
+                    output_projection_layer=state.output_projection_layer,
                 )
                 total_loss += loss
                 output_dict[f"{name}_loss"] = loss
@@ -194,12 +190,14 @@ class Event2Mind(Model):
             batch_size = final_encoder_output.size()[0]
             for name, state in self._states.items():
                 start_predictions = final_encoder_output.new_full(
-                        (batch_size,), fill_value=self._start_index, dtype=torch.long)
+                    (batch_size,), fill_value=self._start_index, dtype=torch.long
+                )
                 start_state = {"decoder_hidden": final_encoder_output}
 
                 # (batch_size, 10, num_decoding_steps)
                 all_top_k_predictions, log_probabilities = self._beam_search.search(
-                        start_predictions, start_state, state.take_step)
+                    start_predictions, start_state, state.take_step
+                )
 
                 if target_tokens:
                     self._update_recall(all_top_k_predictions, target_tokens[name], state.recall)
@@ -208,31 +206,33 @@ class Event2Mind(Model):
 
         return output_dict
 
-    def greedy_search(self,
-                      final_encoder_output: torch.LongTensor,
-                      target_tokens: Dict[str, torch.LongTensor],
-                      target_embedder: Embedding,
-                      decoder_cell: GRUCell,
-                      output_projection_layer: Linear) -> torch.FloatTensor:
+    def greedy_search(
+        self,
+        final_encoder_output: torch.LongTensor,
+        target_tokens: TextFieldTensors,
+        target_embedder: Embedding,
+        decoder_cell: GRUCell,
+        output_projection_layer: Linear,
+    ) -> torch.FloatTensor:
         """
-        Greedily produces a sequence using the provided ``decoder_cell``.
-        Returns the cross entropy between this sequence and ``target_tokens``.
+        Greedily produces a sequence using the provided `decoder_cell`.
+        Returns the cross entropy between this sequence and `target_tokens`.
 
-        Parameters
-        ----------
-        final_encoder_output : ``torch.LongTensor``, required
-            Vector produced by ``self._encoder``.
-        target_tokens : ``Dict[str, torch.LongTensor]``, required
-            The output of ``TextField.as_array()`` applied on some target ``TextField``.
-        target_embedder : ``Embedding``, required
+        # Parameters
+
+        final_encoder_output : `torch.LongTensor`, required
+            Vector produced by `self._encoder`.
+        target_tokens : `TextFieldTensors`, required
+            The output of `TextField.as_array()` applied on some target `TextField`.
+        target_embedder : `Embedding`, required
             Used to embed the target tokens.
-        decoder_cell: ``GRUCell``, required
+        decoder_cell : `GRUCell`, required
             The recurrent cell used at each time step.
-        output_projection_layer: ``Linear``, required
+        output_projection_layer : `Linear`, required
             Linear layer mapping to the desired number of classes.
         """
         num_decoding_steps = self._get_num_decoding_steps(target_tokens)
-        targets = target_tokens["tokens"]
+        targets = target_tokens["tokens"]["tokens"]
         decoder_hidden = final_encoder_output
         step_logits = []
         for timestep in range(num_decoding_steps):
@@ -249,32 +249,36 @@ class Event2Mind(Model):
         target_mask = get_text_field_mask(target_tokens)
         return self._get_loss(logits, targets, target_mask)
 
-    def greedy_predict(self,
-                       final_encoder_output: torch.LongTensor,
-                       target_embedder: Embedding,
-                       decoder_cell: GRUCell,
-                       output_projection_layer: Linear) -> torch.Tensor:
+    def greedy_predict(
+        self,
+        final_encoder_output: torch.LongTensor,
+        target_embedder: Embedding,
+        decoder_cell: GRUCell,
+        output_projection_layer: Linear,
+    ) -> torch.Tensor:
         """
-        Greedily produces a sequence using the provided ``decoder_cell``.
+        Greedily produces a sequence using the provided `decoder_cell`.
         Returns the predicted sequence.
 
-        Parameters
-        ----------
-        final_encoder_output : ``torch.LongTensor``, required
-            Vector produced by ``self._encoder``.
-        target_embedder : ``Embedding``, required
+        # Parameters
+
+        final_encoder_output : `torch.LongTensor`, required
+            Vector produced by `self._encoder`.
+        target_embedder : `Embedding`, required
             Used to embed the target tokens.
-        decoder_cell: ``GRUCell``, required
+        decoder_cell : `GRUCell`, required
             The recurrent cell used at each time step.
-        output_projection_layer: ``Linear``, required
+        output_projection_layer : `Linear`, required
             Linear layer mapping to the desired number of classes.
         """
         num_decoding_steps = self._max_decoding_steps
         decoder_hidden = final_encoder_output
         batch_size = final_encoder_output.size()[0]
-        predictions = [final_encoder_output.new_full(
+        predictions = [
+            final_encoder_output.new_full(
                 (batch_size,), fill_value=self._start_index, dtype=torch.long
-        )]
+            )
+        ]
         for _ in range(num_decoding_steps):
             input_choices = predictions[-1]
             decoder_input = target_embedder(input_choices)
@@ -289,18 +293,18 @@ class Event2Mind(Model):
         return all_predictions[:, 1:]
 
     @staticmethod
-    def _get_loss(logits: torch.LongTensor,
-                  targets: torch.LongTensor,
-                  target_mask: torch.LongTensor) -> torch.FloatTensor:
+    def _get_loss(
+        logits: torch.LongTensor, targets: torch.LongTensor, target_mask: torch.LongTensor
+    ) -> torch.FloatTensor:
         """
         Takes logits (unnormalized outputs from the decoder) of size (batch_size,
         num_decoding_steps, num_classes), target indices of size (batch_size, num_decoding_steps+1)
         and corresponding masks of size (batch_size, num_decoding_steps+1) steps and computes cross
         entropy loss while taking the mask into account.
 
-        The length of ``targets`` is expected to be greater than that of ``logits`` because the
+        The length of `targets` is expected to be greater than that of `logits` because the
         decoder does not need to compute the output corresponding to the last timestep of
-        ``targets``. This method aligns the inputs appropriately to compute the loss.
+        `targets`. This method aligns the inputs appropriately to compute the loss.
 
         During training, we want the logit corresponding to timestep i to be similar to the target
         token from timestep i + 1. That is, the targets should be shifted by one timestep for
@@ -328,25 +332,29 @@ class Event2Mind(Model):
             indices = list(indices)
             # Collect indices till the first end_symbol
             if self._end_index in indices:
-                indices = indices[:indices.index(self._end_index)]
-            predicted_tokens = [self.vocab.get_token_from_index(x, namespace=self._target_namespace)
-                                for x in indices]
+                indices = indices[: indices.index(self._end_index)]
+            predicted_tokens = [
+                self.vocab.get_token_from_index(x, namespace=self._target_namespace)
+                for x in indices
+            ]
             all_predicted_tokens.append(predicted_tokens)
         return all_predicted_tokens
 
     @overrides
     def decode(self, output_dict: Dict[str, torch.Tensor]) -> Dict[str, List[List[str]]]:
         """
-        This method overrides ``Model.decode``, which gets called after ``Model.forward``, at test
+        This method overrides `Model.decode`, which gets called after `Model.forward`, at test
         time, to finalize predictions. The logic for the decoder part of the encoder-decoder lives
-        within the ``forward`` method.
+        within the `forward` method.
 
         This method trims the output predictions to the first end symbol, replaces indices with
-        corresponding tokens, and adds fields for the tokens to the ``output_dict``.
+        corresponding tokens, and adds fields for the tokens to the `output_dict`.
         """
         for name in self._states:
             top_k_predicted_indices = output_dict[f"{name}_top_k_predictions"][0]
-            output_dict[f"{name}_top_k_predicted_tokens"] = [self.decode_all(top_k_predicted_indices)]
+            output_dict[f"{name}_top_k_predicted_tokens"] = [
+                self.decode_all(top_k_predicted_indices)
+            ]
 
         return output_dict
 
@@ -361,23 +369,21 @@ class Event2Mind(Model):
 
 
 class StateDecoder(Module):
-    # pylint: disable=abstract-method
+
     """
     Simple struct-like class for internal use.
     """
-    def __init__(self,
-                 num_classes: int,
-                 input_dim: int,
-                 output_dim: int) -> None:
+
+    def __init__(self, num_classes: int, input_dim: int, output_dim: int) -> None:
         super().__init__()
         self.embedder = Embedding(num_classes, input_dim)
         self.decoder_cell = GRUCell(input_dim, output_dim)
         self.output_projection_layer = Linear(output_dim, num_classes)
         self.recall = UnigramRecall()
 
-    def take_step(self,
-                  last_predictions: torch.Tensor,
-                  state: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+    def take_step(
+        self, last_predictions: torch.Tensor, state: Dict[str, torch.Tensor]
+    ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
         decoder_hidden = state["decoder_hidden"]
         decoder_input = self.embedder(last_predictions)
         decoder_hidden = self.decoder_cell(decoder_input, decoder_hidden)

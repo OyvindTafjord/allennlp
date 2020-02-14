@@ -16,39 +16,46 @@ class BooleanAccuracy(Metric):
     that are totally masked are ignored (in which case the denominator is the number of predictions that have
     at least one unmasked element).
 
-    This is similar to :class:`CategoricalAccuracy`, if you've already done a ``.max()`` on your
-    predictions.  If you have categorical output, though, you should typically just use
-    :class:`CategoricalAccuracy`.  The reason you might want to use this instead is if you've done
+    This is similar to [`CategoricalAccuracy`](./categorical_accuracy.md), if you've already done a `.max()`
+    on your predictions.  If you have categorical output, though, you should typically just use
+    `CategoricalAccuracy`.  The reason you might want to use this instead is if you've done
     some kind of constrained inference and don't have a prediction tensor that matches the API of
-    :class:`CategoricalAccuracy`, which assumes a final dimension of size ``num_classes``.
+    `CategoricalAccuracy`, which assumes a final dimension of size `num_classes`.
     """
-    def __init__(self) -> None:
-        self._correct_count = 0.
-        self._total_count = 0.
 
-    def __call__(self,
-                 predictions: torch.Tensor,
-                 gold_labels: torch.Tensor,
-                 mask: Optional[torch.Tensor] = None):
+    def __init__(self) -> None:
+        self._correct_count = 0.0
+        self._total_count = 0.0
+
+    def __call__(
+        self,
+        predictions: torch.Tensor,
+        gold_labels: torch.Tensor,
+        mask: Optional[torch.Tensor] = None,
+    ):
         """
-        Parameters
-        ----------
-        predictions : ``torch.Tensor``, required.
+        # Parameters
+
+        predictions : `torch.Tensor`, required.
             A tensor of predictions of shape (batch_size, ...).
-        gold_labels : ``torch.Tensor``, required.
-            A tensor of the same shape as ``predictions``.
-        mask: ``torch.Tensor``, optional (default = None).
-            A tensor of the same shape as ``predictions``.
+        gold_labels : `torch.Tensor`, required.
+            A tensor of the same shape as `predictions`.
+        mask : `torch.Tensor`, optional (default = None).
+            A tensor of the same shape as `predictions`.
         """
         predictions, gold_labels, mask = self.unwrap_to_tensors(predictions, gold_labels, mask)
 
         # Some sanity checks.
         if gold_labels.size() != predictions.size():
-            raise ValueError(f"gold_labels must have shape == predictions.size() but "
-                             f"found tensor of shape: {gold_labels.size()}")
+            raise ValueError(
+                f"gold_labels must have shape == predictions.size() but "
+                f"found tensor of shape: {gold_labels.size()}"
+            )
         if mask is not None and mask.size() != predictions.size():
-            raise ValueError(f"mask must have shape == predictions.size() but "
-                             f"found tensor of shape: {mask.size()}")
+            raise ValueError(
+                f"mask must have shape == predictions.size() but "
+                f"found tensor of shape: {mask.size()}"
+            )
 
         batch_size = predictions.size(0)
 
@@ -80,8 +87,8 @@ class BooleanAccuracy(Metric):
 
     def get_metric(self, reset: bool = False):
         """
-        Returns
-        -------
+        # Returns
+
         The accumulated accuracy.
         """
         if self._total_count > 0:

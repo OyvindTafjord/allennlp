@@ -4,13 +4,14 @@ import torch
 
 from allennlp.common.registrable import Registrable
 
-NamedParameter = Tuple[str, torch.Tensor]  # pylint: disable=invalid-name
+NamedParameter = Tuple[str, torch.Tensor]
 
 
 class MovingAverage(Registrable):
     """
     Tracks a moving average of model parameters.
     """
+
     default_implementation = "exponential"
 
     def __init__(self, parameters: Iterable[NamedParameter]) -> None:
@@ -46,23 +47,26 @@ class ExponentialMovingAverage(MovingAverage):
     """
     Create shadow variables and maintain exponential moving average for model parameters.
 
-    Parameters
-    ----------
-    parameters : ``Iterable[Tuple[str, Parameter]]``, required
+    # Parameters
+
+    parameters : `Iterable[Tuple[str, Parameter]]`, required
         The parameters whose averages we'll be tracking.
-    decay : ``float``, optional (default = 0.9999)
+    decay : `float`, optional (default = 0.9999)
         The decay rate that will be used if `num_updates` is not passed
         (and that will be used as an upper bound if `num_updates` is passed).
-    numerator : ``float``, optional (default = 1.0)
-        The numerator used to compute the decay rate if ``num_updates`` is passed.
-    denominator : ``float``, optional (default = 10.0)
-        The denominator used to compute the decay rate if ``num_updates`` is passed.
+    numerator : `float`, optional (default = 1.0)
+        The numerator used to compute the decay rate if `num_updates` is passed.
+    denominator : `float`, optional (default = 10.0)
+        The denominator used to compute the decay rate if `num_updates` is passed.
     """
-    def __init__(self,
-                 parameters: Iterable[NamedParameter],
-                 decay: float = 0.9999,
-                 numerator: float = 1.0,
-                 denominator: float = 10.0) -> None:
+
+    def __init__(
+        self,
+        parameters: Iterable[NamedParameter],
+        decay: float = 0.9999,
+        numerator: float = 1.0,
+        denominator: float = 10.0,
+    ) -> None:
         super().__init__(parameters)
         self._decay = decay
         self._numerator = numerator
@@ -82,8 +86,9 @@ class ExponentialMovingAverage(MovingAverage):
          https://www.tensorflow.org/api_docs/python/tf/train/ExponentialMovingAverage)
         """
         if num_updates is not None:
-            decay = min(self._decay,
-                        (self._numerator + num_updates) / (self._denominator + num_updates))
+            decay = min(
+                self._decay, (self._numerator + num_updates) / (self._denominator + num_updates)
+            )
         else:
             decay = self._decay
 

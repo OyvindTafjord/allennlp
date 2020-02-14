@@ -1,23 +1,26 @@
 from typing import List, TextIO, Optional
 
-def write_bio_formatted_tags_to_file(prediction_file: TextIO,
-                                     gold_file: TextIO,
-                                     verb_index: Optional[int],
-                                     sentence: List[str],
-                                     prediction: List[str],
-                                     gold_labels: List[str]):
+
+def write_bio_formatted_tags_to_file(
+    prediction_file: TextIO,
+    gold_file: TextIO,
+    verb_index: Optional[int],
+    sentence: List[str],
+    prediction: List[str],
+    gold_labels: List[str],
+):
     """
     Prints predicate argument predictions and gold labels for a single verbal
     predicate in a sentence to two provided file references.
 
     The CoNLL SRL format is described in
-    `the shared task data README <https://www.lsi.upc.edu/~srlconll/conll05st-release/README>`_ .
+    [the shared task data README](https://www.lsi.upc.edu/~srlconll/conll05st-release/README).
 
     This function expects IOB2-formatted tags, where the B- tag is used in the beginning
     of every chunk (i.e. all chunks start with the B- tag).
 
-    Parameters
-    ----------
+    # Parameters
+
     prediction_file : TextIO, required.
         A file reference to print predictions to.
     gold_file : TextIO, required.
@@ -35,32 +38,36 @@ def write_bio_formatted_tags_to_file(prediction_file: TextIO,
     """
     conll_formatted_predictions = convert_bio_tags_to_conll_format(prediction)
     conll_formatted_gold_labels = convert_bio_tags_to_conll_format(gold_labels)
-    write_conll_formatted_tags_to_file(prediction_file,
-                                       gold_file,
-                                       verb_index,
-                                       sentence,
-                                       conll_formatted_predictions,
-                                       conll_formatted_gold_labels)
+    write_conll_formatted_tags_to_file(
+        prediction_file,
+        gold_file,
+        verb_index,
+        sentence,
+        conll_formatted_predictions,
+        conll_formatted_gold_labels,
+    )
 
 
-def write_conll_formatted_tags_to_file(prediction_file: TextIO,
-                                       gold_file: TextIO,
-                                       verb_index: Optional[int],
-                                       sentence: List[str],
-                                       conll_formatted_predictions: List[str],
-                                       conll_formatted_gold_labels: List[str]):
+def write_conll_formatted_tags_to_file(
+    prediction_file: TextIO,
+    gold_file: TextIO,
+    verb_index: Optional[int],
+    sentence: List[str],
+    conll_formatted_predictions: List[str],
+    conll_formatted_gold_labels: List[str],
+):
     """
     Prints predicate argument predictions and gold labels for a single verbal
     predicate in a sentence to two provided file references.
 
     The CoNLL SRL format is described in
-    `the shared task data README <https://www.lsi.upc.edu/~srlconll/conll05st-release/README>`_ .
+    [the shared task data README](https://www.lsi.upc.edu/~srlconll/conll05st-release/README).
 
     This function expects IOB2-formatted tags, where the B- tag is used in the beginning
     of every chunk (i.e. all chunks start with the B- tag).
 
-    Parameters
-    ----------
+    # Parameters
+
     prediction_file : TextIO, required.
         A file reference to print predictions to.
     gold_file : TextIO, required.
@@ -77,12 +84,12 @@ def write_conll_formatted_tags_to_file(prediction_file: TextIO,
         The gold CoNLL-formatted labels.
     """
     verb_only_sentence = ["-"] * len(sentence)
-    if verb_index:
+    if verb_index is not None:
         verb_only_sentence[verb_index] = sentence[verb_index]
 
-    for word, predicted, gold in zip(verb_only_sentence,
-                                     conll_formatted_predictions,
-                                     conll_formatted_gold_labels):
+    for word, predicted, gold in zip(
+        verb_only_sentence, conll_formatted_predictions, conll_formatted_gold_labels
+    ):
         prediction_file.write(word.ljust(15))
         prediction_file.write(predicted.rjust(15) + "\n")
         gold_file.write(word.ljust(15))
@@ -105,13 +112,13 @@ def convert_bio_tags_to_conll_format(labels: List[str]):
     [B-ARG-1, I-ARG-1, I-ARG-1, I-ARG-1, I-ARG-1, O]
     [ "(ARG-1*", "*", "*", "*", "*)", "*"]
 
-    Parameters
-    ----------
+    # Parameters
+
     labels : List[str], required.
         A list of BIO tags to convert to the CONLL span based format.
 
-    Returns
-    -------
+    # Returns
+
     A list of labels in the CONLL span based format.
     """
     sentence_length = len(labels)

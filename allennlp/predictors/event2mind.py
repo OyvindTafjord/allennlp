@@ -4,10 +4,11 @@ from allennlp.common.util import JsonDict
 from allennlp.data import Instance
 from allennlp.predictors.predictor import Predictor
 
-@Predictor.register('event2mind')
+
+@Predictor.register("event2mind")
 class Event2MindPredictor(Predictor):
     """
-    Predictor for the :class:`~allennlp.models.event2mind` model.
+    Predictor for the [`event2mind`](../models/event2mind.md) model.
     """
 
     def predict(self, source: str) -> JsonDict:
@@ -26,14 +27,14 @@ class Event2MindPredictor(Predictor):
                 `${target_type}_top_k_log_probabilities`: [-0.301, -0.046, ...]
             }
 
-        By default ``target_type`` can be xreact, oreact and xintent.
+        By default `target_type` can be xreact, oreact and xintent.
         """
-        return self.predict_json({"source" : source})
+        return self.predict_json({"source": source})
 
     @overrides
     def _json_to_instance(self, json_dict: JsonDict) -> Instance:
         """
-        Expects JSON that looks like ``{"source": "..."}``.
+        Expects JSON that looks like `{"source": "..."}`.
         """
         source = json_dict["source"]
         return self._dataset_reader.text_to_instance(source)

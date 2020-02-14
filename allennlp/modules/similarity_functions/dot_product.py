@@ -12,14 +12,15 @@ class DotProductSimilarity(SimilarityFunction):
     This similarity function simply computes the dot product between each pair of vectors, with an
     optional scaling to reduce the variance of the output elements.
 
-    Parameters
-    ----------
-    scale_output : ``bool``, optional
-        If ``True``, we will scale the output by ``math.sqrt(tensor.size(-1))``, to reduce the
+    # Parameters
+
+    scale_output : `bool`, optional
+        If `True`, we will scale the output by `math.sqrt(tensor.size(-1))`, to reduce the
         variance in the result.
     """
+
     def __init__(self, scale_output: bool = False) -> None:
-        super(DotProductSimilarity, self).__init__()
+        super().__init__()
         self._scale_output = scale_output
 
     @overrides

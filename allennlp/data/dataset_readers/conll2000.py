@@ -13,11 +13,11 @@ from allennlp.data.instance import Instance
 from allennlp.data.token_indexers import TokenIndexer, SingleIdTokenIndexer
 from allennlp.data.tokenizers import Token
 
-logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
+logger = logging.getLogger(__name__)
 
 
 def _is_divider(line: str) -> bool:
-    return line.strip() == ''
+    return line.strip() == ""
 
 
 @DatasetReader.register("conll2000")
@@ -28,46 +28,49 @@ class Conll2000DatasetReader(DatasetReader):
     WORD POS-TAG CHUNK-TAG
 
     with a blank line indicating the end of each sentence
-    and converts it into a ``Dataset`` suitable for sequence tagging.
+    and converts it into a `Dataset` suitable for sequence tagging.
 
-    Each ``Instance`` contains the words in the ``"tokens"`` ``TextField``.
-    The values corresponding to the ``tag_label``
-    values will get loaded into the ``"tags"`` ``SequenceLabelField``.
-    And if you specify any ``feature_labels`` (you probably shouldn't),
-    the corresponding values will get loaded into their own ``SequenceLabelField`` s.
+    Each `Instance` contains the words in the `"tokens"` `TextField`.
+    The values corresponding to the `tag_label`
+    values will get loaded into the `"tags"` `SequenceLabelField`.
+    And if you specify any `feature_labels` (you probably shouldn't),
+    the corresponding values will get loaded into their own `SequenceLabelField` s.
 
-    Parameters
-    ----------
-    token_indexers : ``Dict[str, TokenIndexer]``, optional (default=``{"tokens": SingleIdTokenIndexer()}``)
+    # Parameters
+
+    token_indexers : `Dict[str, TokenIndexer]`, optional (default=`{"tokens": SingleIdTokenIndexer()}`)
         We use this to define the input representation for the text.  See :class:`TokenIndexer`.
-    tag_label: ``str``, optional (default=``chunk``)
+    tag_label : `str`, optional (default=`chunk`)
         Specify `pos`, or `chunk` to have that tag loaded into the instance field `tag`.
-    feature_labels: ``Sequence[str]``, optional (default=``()``)
+    feature_labels : `Sequence[str]`, optional (default=`()`)
         These labels will be loaded as features into the corresponding instance fields:
-        ``pos`` -> ``pos_tags`` or ``chunk`` -> ``chunk_tags``.
-        Each will have its own namespace: ``pos_tags`` or ``chunk_tags``.
+        `pos` -> `pos_tags` or `chunk` -> `chunk_tags`.
+        Each will have its own namespace : `pos_tags` or `chunk_tags`.
         If you want to use one of the tags as a `feature` in your model, it should be
         specified here.
-    coding_scheme: ``str``, optional (default=``BIO``)
-        Specifies the coding scheme for ``chunk_labels``.
-        Valid options are ``BIO`` and ``BIOUL``.  The ``BIO`` default maintains
+    coding_scheme : `str`, optional (default=`BIO`)
+        Specifies the coding scheme for `chunk_labels`.
+        Valid options are `BIO` and `BIOUL`.  The `BIO` default maintains
         the original BIO scheme in the CoNLL 2000 chunking data.
         In the BIO scheme, B is a token starting a span, I is a token continuing a span, and
         O is a token outside of a span.
-    label_namespace: ``str``, optional (default=``labels``)
-        Specifies the namespace for the chosen ``tag_label``.
+    label_namespace : `str`, optional (default=`labels`)
+        Specifies the namespace for the chosen `tag_label`.
     """
-    _VALID_LABELS = {'pos', 'chunk'}
 
-    def __init__(self,
-                 token_indexers: Dict[str, TokenIndexer] = None,
-                 tag_label: str = "chunk",
-                 feature_labels: Sequence[str] = (),
-                 lazy: bool = False,
-                 coding_scheme: str = "BIO",
-                 label_namespace: str = "labels") -> None:
-        super().__init__(lazy)
-        self._token_indexers = token_indexers or {'tokens': SingleIdTokenIndexer()}
+    _VALID_LABELS = {"pos", "chunk"}
+
+    def __init__(
+        self,
+        token_indexers: Dict[str, TokenIndexer] = None,
+        tag_label: str = "chunk",
+        feature_labels: Sequence[str] = (),
+        coding_scheme: str = "BIO",
+        label_namespace: str = "labels",
+        **kwargs,
+    ) -> None:
+        super().__init__(**kwargs)
+        self._token_indexers = token_indexers or {"tokens": SingleIdTokenIndexer()}
         if tag_label is not None and tag_label not in self._VALID_LABELS:
             raise ConfigurationError("unknown tag label type: {}".format(tag_label))
         for label in feature_labels:
@@ -99,49 +102,55 @@ class Conll2000DatasetReader(DatasetReader):
                     # unzipping trick returns tuples, but our Fields need lists
                     fields = [list(field) for field in zip(*fields)]
                     tokens_, pos_tags, chunk_tags = fields
-                    # TextField requires ``Token`` objects
+                    # TextField requires `Token` objects
                     tokens = [Token(token) for token in tokens_]
 
                     yield self.text_to_instance(tokens, pos_tags, chunk_tags)
 
-    def text_to_instance(self, # type: ignore
-                         tokens: List[Token],
-                         pos_tags: List[str] = None,
-                         chunk_tags: List[str] = None) -> Instance:
+    def text_to_instance(  # type: ignore
+        self, tokens: List[Token], pos_tags: List[str] = None, chunk_tags: List[str] = None
+    ) -> Instance:
         """
         We take `pre-tokenized` input here, because we don't have a tokenizer in this class.
         """
-        # pylint: disable=arguments-differ
+
         sequence = TextField(tokens, self._token_indexers)
-        instance_fields: Dict[str, Field] = {'tokens': sequence}
+        instance_fields: Dict[str, Field] = {"tokens": sequence}
         instance_fields["metadata"] = MetadataField({"words": [x.text for x in tokens]})
 
         # Recode the labels if necessary.
         if self.coding_scheme == "BIOUL":
-            coded_chunks = to_bioul(chunk_tags,
-                                    encoding=self._original_coding_scheme) if chunk_tags is not None else None
+            coded_chunks = (
+                to_bioul(chunk_tags, encoding=self._original_coding_scheme)
+                if chunk_tags is not None
+                else None
+            )
         else:
             # the default BIO
             coded_chunks = chunk_tags
 
         # Add "feature labels" to instance
-        if 'pos' in self.feature_labels:
+        if "pos" in self.feature_labels:
             if pos_tags is None:
-                raise ConfigurationError("Dataset reader was specified to use pos_tags as "
-                                         "features. Pass them to text_to_instance.")
-            instance_fields['pos_tags'] = SequenceLabelField(pos_tags, sequence, "pos_tags")
-        if 'chunk' in self.feature_labels:
+                raise ConfigurationError(
+                    "Dataset reader was specified to use pos_tags as "
+                    "features. Pass them to text_to_instance."
+                )
+            instance_fields["pos_tags"] = SequenceLabelField(pos_tags, sequence, "pos_tags")
+        if "chunk" in self.feature_labels:
             if coded_chunks is None:
-                raise ConfigurationError("Dataset reader was specified to use chunk tags as "
-                                         "features. Pass them to text_to_instance.")
-            instance_fields['chunk_tags'] = SequenceLabelField(coded_chunks, sequence, "chunk_tags")
+                raise ConfigurationError(
+                    "Dataset reader was specified to use chunk tags as "
+                    "features. Pass them to text_to_instance."
+                )
+            instance_fields["chunk_tags"] = SequenceLabelField(coded_chunks, sequence, "chunk_tags")
 
         # Add "tag label" to instance
-        if self.tag_label == 'pos' and pos_tags is not None:
-            instance_fields['tags'] = SequenceLabelField(pos_tags, sequence,
-                                                         self.label_namespace)
-        elif self.tag_label == 'chunk' and coded_chunks is not None:
-            instance_fields['tags'] = SequenceLabelField(coded_chunks, sequence,
-                                                         self.label_namespace)
+        if self.tag_label == "pos" and pos_tags is not None:
+            instance_fields["tags"] = SequenceLabelField(pos_tags, sequence, self.label_namespace)
+        elif self.tag_label == "chunk" and coded_chunks is not None:
+            instance_fields["tags"] = SequenceLabelField(
+                coded_chunks, sequence, self.label_namespace
+            )
 
         return Instance(instance_fields)

@@ -6,13 +6,20 @@ from overrides import overrides
 
 from allennlp.common.file_utils import cached_path
 from allennlp.data.dataset_readers.dataset_reader import DatasetReader
-from allennlp.data.fields import Field, ListField, TextField, SpanField, MetadataField, SequenceLabelField
+from allennlp.data.fields import (
+    Field,
+    ListField,
+    TextField,
+    SpanField,
+    MetadataField,
+    SequenceLabelField,
+)
 from allennlp.data.instance import Instance
 from allennlp.data.tokenizers import Token
 from allennlp.data.token_indexers import SingleIdTokenIndexer, TokenIndexer
-from allennlp.data.dataset_readers.dataset_utils import  enumerate_spans
+from allennlp.data.dataset_readers.dataset_utils import enumerate_spans
 
-logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
+logger = logging.getLogger(__name__)
 
 
 @DatasetReader.register("winobias")
@@ -33,26 +40,26 @@ class WinobiasReader(DatasetReader):
     [The salesperson] sold (some books) to the librarian because [she] was trying to sell (them).
 
 
-    Returns a list of ``Instances`` which have four fields: ``text``, a ``TextField``
-    containing the full sentence text, ``spans``, a ``ListField[SpanField]`` of inclusive start and
-    end indices for span candidates, and ``metadata``, a ``MetadataField`` that stores the instance's
-    original text. For data with gold cluster labels, we also include the original ``clusters``
-    (a list of list of index pairs) and a ``SequenceLabelField`` of cluster ids for every span
-    candidate in the ``metadata`` also.
+    Returns a list of `Instances` which have four fields : `text`, a `TextField`
+    containing the full sentence text, `spans`, a `ListField[SpanField]` of inclusive start and
+    end indices for span candidates, and `metadata`, a `MetadataField` that stores the instance's
+    original text. For data with gold cluster labels, we also include the original `clusters`
+    (a list of list of index pairs) and a `SequenceLabelField` of cluster ids for every span
+    candidate in the `metadata` also.
 
-    Parameters
-    ----------
-    max_span_width: ``int``, required.
+    # Parameters
+
+    max_span_width : `int`, required.
         The maximum width of candidate spans to consider.
-    token_indexers : ``Dict[str, TokenIndexer]``, optional
+    token_indexers : `Dict[str, TokenIndexer]`, optional
         This is used to index the words in the sentence.  See :class:`TokenIndexer`.
-        Default is ``{"tokens": SingleIdTokenIndexer()}``.
+        Default is `{"tokens": SingleIdTokenIndexer()}`.
     """
-    def __init__(self,
-                 max_span_width: int,
-                 token_indexers: Dict[str, TokenIndexer] = None,
-                 lazy: bool = False) -> None:
-        super().__init__(lazy)
+
+    def __init__(
+        self, max_span_width: int, token_indexers: Dict[str, TokenIndexer] = None, **kwargs,
+    ) -> None:
+        super().__init__(**kwargs)
         self._max_span_width = max_span_width
         self._token_indexers = token_indexers or {"tokens": SingleIdTokenIndexer()}
 
@@ -94,33 +101,35 @@ class WinobiasReader(DatasetReader):
             yield self.text_to_instance([Token(x) for x in words], [x for x in clusters.values()])
 
     @overrides
-    def text_to_instance(self,  # type: ignore
-                         sentence: List[Token],
-                         gold_clusters: Optional[List[List[Tuple[int, int]]]] = None) -> Instance:
-        # pylint: disable=arguments-differ
+    def text_to_instance(
+        self,  # type: ignore
+        sentence: List[Token],
+        gold_clusters: Optional[List[List[Tuple[int, int]]]] = None,
+    ) -> Instance:
+
         """
-        Parameters
-        ----------
-        sentence : ``List[Token]``, required.
+        # Parameters
+
+        sentence : `List[Token]`, required.
             The already tokenised sentence to analyse.
-        gold_clusters : ``Optional[List[List[Tuple[int, int]]]]``, optional (default = None)
+        gold_clusters : `Optional[List[List[Tuple[int, int]]]]`, optional (default = None)
             A list of all clusters in the sentence, represented as word spans. Each cluster
             contains some number of spans, which can be nested and overlap, but will never
             exactly match between clusters.
 
-        Returns
-        -------
-        An ``Instance`` containing the following ``Fields``:
-            text : ``TextField``
+        # Returns
+
+        An `Instance` containing the following `Fields`:
+            text : `TextField`
                 The text of the full sentence.
-            spans : ``ListField[SpanField]``
-                A ListField containing the spans represented as ``SpanFields``
+            spans : `ListField[SpanField]`
+                A ListField containing the spans represented as `SpanFields`
                 with respect to the sentence text.
-            span_labels : ``SequenceLabelField``, optional
+            span_labels : `SequenceLabelField`, optional
                 The id of the cluster which each possible span belongs to, or -1 if it does
                  not belong to a cluster. As these labels have variable length (it depends on
-                 how many spans we are considering), we represent this a as a ``SequenceLabelField``
-                 with respect to the ``spans ``ListField``.
+                 how many spans we are considering), we represent this a as a `SequenceLabelField`
+                 with respect to the `spans `ListField`.
         """
         metadata: Dict[str, Any] = {"original_text": sentence}
         if gold_clusters is not None:
@@ -149,9 +158,11 @@ class WinobiasReader(DatasetReader):
         span_field = ListField(spans)
         metadata_field = MetadataField(metadata)
 
-        fields: Dict[str, Field] = {"text": text_field,
-                                    "spans": span_field,
-                                    "metadata": metadata_field}
+        fields: Dict[str, Field] = {
+            "text": text_field,
+            "spans": span_field,
+            "metadata": metadata_field,
+        }
         if span_labels is not None:
             fields["span_labels"] = SequenceLabelField(span_labels, span_field)
 

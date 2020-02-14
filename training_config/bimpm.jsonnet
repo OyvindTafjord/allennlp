@@ -3,10 +3,7 @@
     "type": "quora_paraphrase",
     "lazy": false,
     "tokenizer": {
-      "type": "word",
-      "word_splitter": {
-        "type": "just_spaces"
-      }
+      "type": "just_spaces"
     },
     "token_indexers": {
       "tokens": {
@@ -24,25 +21,27 @@
     "type": "bimpm",
     "dropout": 0.1,
     "text_field_embedder": {
-      "tokens": {
-        "type": "embedding",
-        "pretrained_file": "https://allennlp.s3.amazonaws.com/datasets/glove/glove.840B.300d.txt.gz",
-        "embedding_dim": 300,
-        "trainable": false,
-        "padding_index": 0
-      },
-      "token_characters": {
-        "type": "character_encoding",
-        "embedding": {
-          "embedding_dim": 20,
+      "token_embedders": {
+        "tokens": {
+          "type": "embedding",
+          "pretrained_file": "https://allennlp.s3.amazonaws.com/datasets/glove/glove.840B.300d.txt.gz",
+          "embedding_dim": 300,
+          "trainable": false,
           "padding_index": 0
         },
-        "encoder": {
-          "type": "gru",
-          "input_size": 20,
-          "hidden_size": 50,
-          "num_layers": 1,
-          "bidirectional": true
+        "token_characters": {
+          "type": "character_encoding",
+          "embedding": {
+            "embedding_dim": 20,
+            "padding_index": 0
+          },
+          "encoder": {
+            "type": "gru",
+            "input_size": 20,
+            "hidden_size": 50,
+            "num_layers": 1,
+            "bidirectional": true
+          }
         }
       }
     },

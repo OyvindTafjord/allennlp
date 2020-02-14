@@ -1,4 +1,4 @@
-FROM python:3.6.8-stretch
+FROM python:3.6.10-stretch
 
 ENV LC_ALL=C.UTF-8
 ENV LANG=C.UTF-8
@@ -35,8 +35,12 @@ RUN apt-get update --fix-missing && apt-get install -y \
 
 # Copy select files needed for installing requirements.
 # We only copy what we need here so small changes to the repository does not trigger re-installation of the requirements.
-COPY requirements.txt .
-RUN pip install -r requirements.txt
+COPY setup.py .
+COPY README.md .
+COPY allennlp/version.py allennlp/version.py
+RUN pip install -e .
+COPY dev-requirements.txt .
+RUN pip install -r dev-requirements.txt
 
 # Custom for document_retriever code in transf-exp1 branch
 RUN pip install elasticsearch
@@ -45,11 +49,12 @@ RUN pip install requests_aws4auth
 COPY scripts/ scripts/
 COPY allennlp/ allennlp/
 COPY pytest.ini pytest.ini
-COPY .pylintrc .pylintrc
+COPY .flake8 .flake8
 COPY tutorials/ tutorials/
 COPY training_config training_config/
 COPY setup.py setup.py
 COPY README.md README.md
+COPY mkdocs.yml mkdocs.yml
 
 RUN pip install --editable .
 
@@ -69,7 +74,7 @@ ARG SOURCE_COMMIT
 ENV ALLENNLP_SOURCE_COMMIT $SOURCE_COMMIT
 
 # Copy wrapper script to allow beaker to run resumable training workloads.
-COPY scripts/ai2-internal/resumable_train.sh /stage/allennlp
+COPY scripts/ai2_internal/resumable_train.sh /stage/allennlp
 
 LABEL maintainer="allennlp-contact@allenai.org"
 

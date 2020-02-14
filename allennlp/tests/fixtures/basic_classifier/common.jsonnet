@@ -3,7 +3,7 @@
         "lazy": false,
         "type": "text_classification_json",
         "tokenizer": {
-            "word_splitter": "spacy"
+            "type": "spacy"
         },
         "token_indexers": {
             "tokens": {
@@ -18,7 +18,6 @@
     "validation_data_path": "allennlp/tests/fixtures/data/text_classification_json/imdb_corpus.jsonl",
     "iterator": {
         "type": "bucket",
-        "sorting_keys": [["tokens", "num_tokens"]],
         "batch_size": 5
     },
     "trainer": {
@@ -27,7 +26,6 @@
             "lr": 0.001
         },
         "validation_metric": "+accuracy",
-        "num_serialized_models_to_keep": 1,
         "num_epochs": 3,
         "grad_norm": 10.0,
         "patience": 5,

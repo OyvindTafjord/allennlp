@@ -13,7 +13,6 @@ local bert_model = "allennlp/tests/fixtures/bert/vocab.txt";
     },
     "iterator": {
         "type": "bucket",
-        "sorting_keys": [["tokens", "num_tokens"]],
         "batch_size": 5,
         "padding_noise": 0.0
     },
@@ -22,7 +21,9 @@ local bert_model = "allennlp/tests/fixtures/bert/vocab.txt";
             "type": "adam",
             "lr": 0.001
         },
-        "num_serialized_models_to_keep": 1,
+        "checkpointer": {
+            "num_serialized_models_to_keep": 1
+        },
         "num_epochs": 3,
         "grad_norm": 10.0,
         "patience": 5,

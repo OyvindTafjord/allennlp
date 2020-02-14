@@ -1,4 +1,3 @@
-# pylint: disable=no-self-use,invalid-name
 import argparse
 import csv
 import io
@@ -11,43 +10,53 @@ import tempfile
 
 import pytest
 
-from allennlp.common.checks import ConfigurationError
-from allennlp.common.util import JsonDict
-from allennlp.common.testing import AllenNlpTestCase
 from allennlp.commands import main
 from allennlp.commands.predict import Predict
-from allennlp.predictors import Predictor, BidafPredictor
+from allennlp.common.checks import ConfigurationError
+from allennlp.common.testing import AllenNlpTestCase
+from allennlp.common.util import JsonDict, push_python_path
+from allennlp.data.dataset_readers import DatasetReader, TextClassificationJsonReader
+from allennlp.models.archival import load_archive
+from allennlp.predictors import Predictor, TextClassifierPredictor
+from allennlp.predictors.predictor import DEFAULT_PREDICTORS
 
 
 class TestPredict(AllenNlpTestCase):
     def setUp(self):
-        super(TestPredict, self).setUp()
-        self.bidaf_model_path = (self.FIXTURES_ROOT / "bidaf" /
-                                 "serialization" / "model.tar.gz")
-        self.bidaf_data_path = self.FIXTURES_ROOT / 'data' / 'squad.json'
-        self.atis_model_path = (self.FIXTURES_ROOT / "semantic_parsing" / "atis" /
-                                "serialization" / "model.tar.gz")
-        self.atis_data_path = self.FIXTURES_ROOT / 'data' / 'atis' / 'sample.json'
+        super().setUp()
+        self.classifier_model_path = (
+            self.FIXTURES_ROOT / "basic_classifier" / "serialization" / "model.tar.gz"
+        )
+        self.classifier_data_path = (
+            self.FIXTURES_ROOT / "data" / "text_classification_json" / "imdb_corpus.jsonl"
+        )
+        self.esim_model_path = self.FIXTURES_ROOT / "esim" / "serialization" / "model.tar.gz"
+        self.esim_data_path = self.FIXTURES_ROOT / "data" / "snli.jsonl"
         self.tempdir = pathlib.Path(tempfile.mkdtemp())
         self.infile = self.tempdir / "inputs.txt"
         self.outfile = self.tempdir / "outputs.txt"
 
     def test_add_predict_subparser(self):
         parser = argparse.ArgumentParser(description="Testing")
-        subparsers = parser.add_subparsers(title='Commands', metavar='')
-        Predict().add_subparser('predict', subparsers)
+        subparsers = parser.add_subparsers(title="Commands", metavar="")
+        Predict().add_subparser(subparsers)
 
-        kebab_args = ["predict",          # command
-                      "/path/to/archive", # archive
-                      "/dev/null",        # input_file
-                      "--output-file", "/dev/null",
-                      "--batch-size", "10",
-                      "--cuda-device", "0",
-                      "--silent"]
+        kebab_args = [
+            "predict",  # command
+            "/path/to/archive",  # archive
+            "/dev/null",  # input_file
+            "--output-file",
+            "/dev/null",
+            "--batch-size",
+            "10",
+            "--cuda-device",
+            "0",
+            "--silent",
+        ]
 
         args = parser.parse_args(kebab_args)
 
-        assert args.func.__name__ == '_predict'
+        assert args.func.__name__ == "_predict"
         assert args.archive_file == "/path/to/archive"
         assert args.output_file == "/dev/null"
         assert args.batch_size == 10
@@ -55,321 +64,377 @@ class TestPredict(AllenNlpTestCase):
         assert args.silent
 
     def test_works_with_known_model(self):
-        with open(self.infile, 'w') as f:
-            f.write("""{"passage": "the seahawks won the super bowl in 2016", """
-                    """ "question": "when did the seahawks win the super bowl?"}\n""")
-            f.write("""{"passage": "the mariners won the super bowl in 2037", """
-                    """ "question": "when did the mariners win the super bowl?"}\n""")
+        with open(self.infile, "w") as f:
+            f.write("""{"sentence": "the seahawks won the super bowl in 2016"}\n""")
+            f.write("""{"sentence": "the mariners won the super bowl in 2037"}\n""")
 
-        sys.argv = ["run.py",      # executable
-                    "predict",     # command
-                    str(self.bidaf_model_path),
-                    str(self.infile),     # input_file
-                    "--output-file", str(self.outfile),
-                    "--silent"]
+        sys.argv = [
+            "run.py",  # executable
+            "predict",  # command
+            str(self.classifier_model_path),
+            str(self.infile),  # input_file
+            "--output-file",
+            str(self.outfile),
+            "--silent",
+        ]
 
         main()
 
         assert os.path.exists(self.outfile)
 
-        with open(self.outfile, 'r') as f:
+        with open(self.outfile, "r") as f:
             results = [json.loads(line) for line in f]
 
         assert len(results) == 2
         for result in results:
-            assert set(result.keys()) == {"span_start_logits", "span_end_logits",
-                                          "passage_question_attention", "question_tokens",
-                                          "passage_tokens", "span_start_probs", "span_end_probs",
-                                          "best_span", "best_span_str"}
+            assert set(result.keys()) == {"label", "logits", "probs"}
 
         shutil.rmtree(self.tempdir)
 
     def test_using_dataset_reader_works_with_known_model(self):
 
-        sys.argv = ["run.py",      # executable
-                    "predict",     # command
-                    str(self.bidaf_model_path),
-                    str(self.bidaf_data_path),     # input_file
-                    "--output-file", str(self.outfile),
-                    "--silent",
-                    "--use-dataset-reader"]
+        sys.argv = [
+            "run.py",  # executable
+            "predict",  # command
+            str(self.classifier_model_path),
+            str(self.classifier_data_path),  # input_file
+            "--output-file",
+            str(self.outfile),
+            "--silent",
+            "--use-dataset-reader",
+        ]
 
         main()
 
         assert os.path.exists(self.outfile)
 
-        with open(self.outfile, 'r') as f:
+        with open(self.outfile, "r") as f:
             results = [json.loads(line) for line in f]
 
-        assert len(results) == 5
+        assert len(results) == 3
         for result in results:
-            assert set(result.keys()) == {"span_start_logits", "span_end_logits",
-                                          "passage_question_attention", "question_tokens",
-                                          "passage_tokens", "span_start_probs", "span_end_probs",
-                                          "best_span", "best_span_str", "loss"}
+            assert set(result.keys()) == {"label", "logits", "loss", "probs"}
 
         shutil.rmtree(self.tempdir)
 
     def test_uses_correct_dataset_reader(self):
-        # pylint: disable=protected-access
-        # The ATIS archive has both a training and validation ``DatasetReader``
-        # with different values for ``keep_if_unparseable`` (``True`` for validation
-        # and ``False`` for training). We create a new ``Predictor`` class that
-        # outputs this value so we can test which ``DatasetReader`` was used.
-        @Predictor.register('test-predictor')
+        # We're going to use a fake predictor for this test, just checking that we loaded the
+        # correct dataset reader.  We'll also create a fake dataset reader that subclasses the
+        # expected one, and specify that one for validation.
+        @Predictor.register("test-predictor")
         class _TestPredictor(Predictor):
-            # pylint: disable=abstract-method
             def dump_line(self, outputs: JsonDict) -> str:
-                data = {'keep_if_unparseable': self._dataset_reader._keep_if_unparseable}  # type: ignore
-                return json.dumps(data) + '\n'
+                data = {
+                    "dataset_reader_type": type(self._dataset_reader).__name__  # type: ignore
+                }
+                return json.dumps(data) + "\n"
+
+            def load_line(self, line: str) -> JsonDict:
+                raise NotImplementedError
+
+        @DatasetReader.register("fake-reader")
+        class FakeDatasetReader(TextClassificationJsonReader):
+            pass
 
         # --use-dataset-reader argument only should use validation
-        sys.argv = ["run.py",      # executable
-                    "predict",     # command
-                    str(self.atis_model_path),
-                    str(self.atis_data_path),     # input_file
-                    "--output-file", str(self.outfile),
-                    "--silent",
-                    "--predictor", "test-predictor",
-                    "--use-dataset-reader"]
+        sys.argv = [
+            "run.py",  # executable
+            "predict",  # command
+            str(self.classifier_model_path),
+            str(self.classifier_data_path),  # input_file
+            "--output-file",
+            str(self.outfile),
+            "--overrides",
+            '{"validation_dataset_reader": {"type": "fake-reader"}}',
+            "--silent",
+            "--predictor",
+            "test-predictor",
+            "--use-dataset-reader",
+        ]
         main()
         assert os.path.exists(self.outfile)
-        with open(self.outfile, 'r') as f:
+        with open(self.outfile, "r") as f:
             results = [json.loads(line) for line in f]
-            assert results[0]['keep_if_unparseable'] is True
+            assert results[0]["dataset_reader_type"] == "FakeDatasetReader"
 
         # --use-dataset-reader, override with train
-        sys.argv = ["run.py",      # executable
-                    "predict",     # command
-                    str(self.atis_model_path),
-                    str(self.atis_data_path),     # input_file
-                    "--output-file", str(self.outfile),
-                    "--silent",
-                    "--predictor", "test-predictor",
-                    "--use-dataset-reader",
-                    "--dataset-reader-choice", "train"]
+        sys.argv = [
+            "run.py",  # executable
+            "predict",  # command
+            str(self.classifier_model_path),
+            str(self.classifier_data_path),  # input_file
+            "--output-file",
+            str(self.outfile),
+            "--overrides",
+            '{"validation_dataset_reader": {"type": "fake-reader"}}',
+            "--silent",
+            "--predictor",
+            "test-predictor",
+            "--use-dataset-reader",
+            "--dataset-reader-choice",
+            "train",
+        ]
         main()
         assert os.path.exists(self.outfile)
-        with open(self.outfile, 'r') as f:
+        with open(self.outfile, "r") as f:
             results = [json.loads(line) for line in f]
-            assert results[0]['keep_if_unparseable'] is False
+            assert results[0]["dataset_reader_type"] == "TextClassificationJsonReader"
 
-        # --use-dataset-reader, override with train
-        sys.argv = ["run.py",      # executable
-                    "predict",     # command
-                    str(self.atis_model_path),
-                    str(self.atis_data_path),     # input_file
-                    "--output-file", str(self.outfile),
-                    "--silent",
-                    "--predictor", "test-predictor",
-                    "--use-dataset-reader",
-                    "--dataset-reader-choice", "validation"]
+        # --use-dataset-reader, override with validation
+        sys.argv = [
+            "run.py",  # executable
+            "predict",  # command
+            str(self.classifier_model_path),
+            str(self.classifier_data_path),  # input_file
+            "--output-file",
+            str(self.outfile),
+            "--overrides",
+            '{"validation_dataset_reader": {"type": "fake-reader"}}',
+            "--silent",
+            "--predictor",
+            "test-predictor",
+            "--use-dataset-reader",
+            "--dataset-reader-choice",
+            "validation",
+        ]
         main()
         assert os.path.exists(self.outfile)
-        with open(self.outfile, 'r') as f:
+        with open(self.outfile, "r") as f:
             results = [json.loads(line) for line in f]
-            assert results[0]['keep_if_unparseable'] is True
+            assert results[0]["dataset_reader_type"] == "FakeDatasetReader"
 
         # No --use-dataset-reader flag, fails because the loading logic
         # is not implemented in the testing predictor
-        sys.argv = ["run.py",      # executable
-                    "predict",     # command
-                    str(self.atis_model_path),
-                    str(self.atis_data_path),     # input_file
-                    "--output-file", str(self.outfile),
-                    "--silent",
-                    "--predictor", "test-predictor"]
+        sys.argv = [
+            "run.py",  # executable
+            "predict",  # command
+            str(self.classifier_model_path),
+            str(self.classifier_data_path),  # input_file
+            "--output-file",
+            str(self.outfile),
+            "--overrides",
+            '{"validation_dataset_reader": {"type": "fake-reader"}}',
+            "--silent",
+            "--predictor",
+            "test-predictor",
+        ]
         with self.assertRaises(NotImplementedError):
             main()
 
-    def test_batch_prediction_works_with_known_model(self):
-        with open(self.infile, 'w') as f:
-            f.write("""{"passage": "the seahawks won the super bowl in 2016", """
-                    """ "question": "when did the seahawks win the super bowl?"}\n""")
-            f.write("""{"passage": "the mariners won the super bowl in 2037", """
-                    """ "question": "when did the mariners win the super bowl?"}\n""")
+    def test_base_predictor(self):
+        # Tests when no Predictor is found and the base class implementation is used
+        model_path = str(self.esim_model_path)
+        archive = load_archive(model_path)
+        model_type = archive.config.get("model").get("type")
+        # Makes sure that we don't have a DEFAULT_PREDICTOR for it. Otherwise the base class
+        # implementation wouldn't be used
+        assert model_type not in DEFAULT_PREDICTORS
 
-        sys.argv = ["run.py",  # executable
-                    "predict",  # command
-                    str(self.bidaf_model_path),
-                    str(self.infile),  # input_file
-                    "--output-file", str(self.outfile),
-                    "--silent",
-                    "--batch-size", '2']
+        # Doesn't use a --predictor
+        sys.argv = [
+            "run.py",  # executable
+            "predict",  # command
+            model_path,
+            str(self.esim_data_path),  # input_file
+            "--output-file",
+            str(self.outfile),
+            "--silent",
+            "--use-dataset-reader",
+        ]
+        main()
+        assert os.path.exists(self.outfile)
+        with open(self.outfile, "r") as f:
+            results = [json.loads(line) for line in f]
+
+        assert len(results) == 3
+        for result in results:
+            assert set(result.keys()) == {"label_logits", "label_probs", "loss"}
+
+    def test_batch_prediction_works_with_known_model(self):
+        with open(self.infile, "w") as f:
+            f.write("""{"sentence": "the seahawks won the super bowl in 2016"}\n""")
+            f.write("""{"sentence": "the mariners won the super bowl in 2037"}\n""")
+
+        sys.argv = [
+            "run.py",  # executable
+            "predict",  # command
+            str(self.classifier_model_path),
+            str(self.infile),  # input_file
+            "--output-file",
+            str(self.outfile),
+            "--silent",
+            "--batch-size",
+            "2",
+        ]
 
         main()
 
         assert os.path.exists(self.outfile)
-        with open(self.outfile, 'r') as f:
+        with open(self.outfile, "r") as f:
             results = [json.loads(line) for line in f]
 
         assert len(results) == 2
         for result in results:
-            assert set(result.keys()) == {"span_start_logits", "span_end_logits",
-                                          "passage_question_attention", "question_tokens",
-                                          "passage_tokens", "span_start_probs", "span_end_probs",
-                                          "best_span", "best_span_str"}
+            assert set(result.keys()) == {"label", "logits", "probs"}
 
         shutil.rmtree(self.tempdir)
 
     def test_fails_without_required_args(self):
-        sys.argv = ["run.py",            # executable
-                    "predict",           # command
-                    "/path/to/archive",  # archive, but no input file
-                   ]
+        sys.argv = [
+            "run.py",
+            "predict",
+            "/path/to/archive",
+        ]  # executable  # command  # archive, but no input file
 
-        with self.assertRaises(SystemExit) as cm:  # pylint: disable=invalid-name
+        with self.assertRaises(SystemExit) as cm:
             main()
 
         assert cm.exception.code == 2  # argparse code for incorrect usage
 
     def test_can_specify_predictor(self):
+        @Predictor.register("classification-explicit")
+        class ExplicitPredictor(TextClassifierPredictor):
+            """same as classifier predictor but with an extra field"""
 
-        @Predictor.register('bidaf-explicit')  # pylint: disable=unused-variable
-        class Bidaf3Predictor(BidafPredictor):
-            """same as bidaf predictor but with an extra field"""
             def predict_json(self, inputs: JsonDict) -> JsonDict:
                 result = super().predict_json(inputs)
                 result["explicit"] = True
                 return result
 
-        with open(self.infile, 'w') as f:
-            f.write("""{"passage": "the seahawks won the super bowl in 2016", """
-                    """ "question": "when did the seahawks win the super bowl?"}\n""")
-            f.write("""{"passage": "the mariners won the super bowl in 2037", """
-                    """ "question": "when did the mariners win the super bowl?"}\n""")
+        with open(self.infile, "w") as f:
+            f.write("""{"sentence": "the seahawks won the super bowl in 2016"}\n""")
+            f.write("""{"sentence": "the mariners won the super bowl in 2037"}\n""")
 
-        sys.argv = ["run.py",      # executable
-                    "predict",     # command
-                    str(self.bidaf_model_path),
-                    str(self.infile),     # input_file
-                    "--output-file", str(self.outfile),
-                    "--predictor", "bidaf-explicit",
-                    "--silent"]
+        sys.argv = [
+            "run.py",  # executable
+            "predict",  # command
+            str(self.classifier_model_path),
+            str(self.infile),  # input_file
+            "--output-file",
+            str(self.outfile),
+            "--predictor",
+            "classification-explicit",
+            "--silent",
+        ]
 
         main()
         assert os.path.exists(self.outfile)
 
-        with open(self.outfile, 'r') as f:
+        with open(self.outfile, "r") as f:
             results = [json.loads(line) for line in f]
 
         assert len(results) == 2
         # Overridden predictor should output extra field
         for result in results:
-            assert set(result.keys()) == {"span_start_logits", "span_end_logits",
-                                          "passage_question_attention", "question_tokens",
-                                          "passage_tokens", "span_start_probs", "span_end_probs",
-                                          "best_span", "best_span_str", "explicit"}
+            assert set(result.keys()) == {"label", "logits", "explicit", "probs"}
 
         shutil.rmtree(self.tempdir)
 
     def test_other_modules(self):
         # Create a new package in a temporary dir
-        packagedir = self.TEST_DIR / 'testpackage'
-        packagedir.mkdir()  # pylint: disable=no-member
-        (packagedir / '__init__.py').touch()  # pylint: disable=no-member
+        packagedir = self.TEST_DIR / "testpackage"
+        packagedir.mkdir()
+        (packagedir / "__init__.py").touch()
 
         # And add that directory to the path
-        sys.path.insert(0, str(self.TEST_DIR))
+        with push_python_path(self.TEST_DIR):
+            # Write out a duplicate predictor there, but registered under a different name.
+            from allennlp.predictors import text_classifier
 
-        # Write out a duplicate predictor there, but registered under a different name.
-        from allennlp.predictors import bidaf
-        with open(bidaf.__file__) as f:
-            code = f.read().replace("""@Predictor.register('machine-comprehension')""",
-                                    """@Predictor.register('duplicate-test-predictor')""")
+            with open(text_classifier.__file__) as f:
+                code = f.read().replace(
+                    """@Predictor.register("text_classifier")""",
+                    """@Predictor.register("duplicate-test-predictor")""",
+                )
 
-        with open(os.path.join(packagedir, 'predictor.py'), 'w') as f:
-            f.write(code)
+            with open(os.path.join(packagedir, "predictor.py"), "w") as f:
+                f.write(code)
 
-        self.infile = os.path.join(self.TEST_DIR, "inputs.txt")
-        self.outfile = os.path.join(self.TEST_DIR, "outputs.txt")
+            self.infile = os.path.join(self.TEST_DIR, "inputs.txt")
+            self.outfile = os.path.join(self.TEST_DIR, "outputs.txt")
 
-        with open(self.infile, 'w') as f:
-            f.write("""{"passage": "the seahawks won the super bowl in 2016", """
-                    """ "question": "when did the seahawks win the super bowl?"}\n""")
-            f.write("""{"passage": "the mariners won the super bowl in 2037", """
-                    """ "question": "when did the mariners win the super bowl?"}\n""")
+            with open(self.infile, "w") as f:
+                f.write("""{"sentence": "the seahawks won the super bowl in 2016"}\n""")
+                f.write("""{"sentence": "the mariners won the super bowl in 2037"}\n""")
 
-        sys.argv = ["run.py",      # executable
-                    "predict",     # command
-                    str(self.bidaf_model_path),
-                    str(self.infile),     # input_file
-                    "--output-file", str(self.outfile),
-                    "--predictor", "duplicate-test-predictor",
-                    "--silent"]
+            sys.argv = [
+                "run.py",  # executable
+                "predict",  # command
+                str(self.classifier_model_path),
+                str(self.infile),  # input_file
+                "--output-file",
+                str(self.outfile),
+                "--predictor",
+                "duplicate-test-predictor",
+                "--silent",
+            ]
 
-        # Should raise ConfigurationError, because predictor is unknown
-        with pytest.raises(ConfigurationError):
+            # Should raise ConfigurationError, because predictor is unknown
+            with pytest.raises(ConfigurationError):
+                main()
+
+            # But once we include testpackage, it should be known
+            sys.argv.extend(["--include-package", "testpackage"])
             main()
 
-        # But once we include testpackage, it should be known
-        sys.argv.extend(["--include-package", "testpackage"])
-        main()
+            assert os.path.exists(self.outfile)
 
-        assert os.path.exists(self.outfile)
+            with open(self.outfile, "r") as f:
+                results = [json.loads(line) for line in f]
 
-        with open(self.outfile, 'r') as f:
-            results = [json.loads(line) for line in f]
-
-        assert len(results) == 2
-        # Overridden predictor should output extra field
-        for result in results:
-            assert set(result.keys()) == {"span_start_logits", "span_end_logits",
-                                          "passage_question_attention", "question_tokens",
-                                          "passage_tokens", "span_start_probs", "span_end_probs",
-                                          "best_span", "best_span_str"}
-
-        sys.path.remove(str(self.TEST_DIR))
+            assert len(results) == 2
+            # Overridden predictor should output extra field
+            for result in results:
+                assert set(result.keys()) == {"label", "logits", "probs"}
 
     def test_alternative_file_formats(self):
-        @Predictor.register('bidaf-csv')  # pylint: disable=unused-variable
-        class BidafCsvPredictor(BidafPredictor):
-            """same as bidaf predictor but using CSV inputs and outputs"""
+        @Predictor.register("classification-csv")
+        class CsvPredictor(TextClassifierPredictor):
+            """same as classification predictor but using CSV inputs and outputs"""
+
             def load_line(self, line: str) -> JsonDict:
                 reader = csv.reader([line])
-                passage, question = next(reader)
-                return {"passage": passage, "question": question}
+                sentence, label = next(reader)
+                return {"sentence": sentence, "label": label}
 
             def dump_line(self, outputs: JsonDict) -> str:
                 output = io.StringIO()
                 writer = csv.writer(output)
-                row = [outputs["span_start_probs"][0],
-                       outputs["span_end_probs"][0],
-                       *outputs["best_span"],
-                       outputs["best_span_str"]]
+                row = [outputs["label"], *outputs["probs"]]
 
                 writer.writerow(row)
                 return output.getvalue()
 
-        with open(self.infile, 'w') as f:
+        with open(self.infile, "w") as f:
             writer = csv.writer(f)
-            writer.writerow(["the seahawks won the super bowl in 2016",
-                             "when did the seahawks win the super bowl?"])
-            writer.writerow(["the mariners won the super bowl in 2037",
-                             "when did the mariners win the super bowl?"])
+            writer.writerow(["the seahawks won the super bowl in 2016", "pos"])
+            writer.writerow(["the mariners won the super bowl in 2037", "neg"])
 
-        sys.argv = ["run.py",      # executable
-                    "predict",     # command
-                    str(self.bidaf_model_path),
-                    str(self.infile),     # input_file
-                    "--output-file", str(self.outfile),
-                    "--predictor", 'bidaf-csv',
-                    "--silent"]
+        sys.argv = [
+            "run.py",  # executable
+            "predict",  # command
+            str(self.classifier_model_path),
+            str(self.infile),  # input_file
+            "--output-file",
+            str(self.outfile),
+            "--predictor",
+            "classification-csv",
+            "--silent",
+        ]
 
         main()
         assert os.path.exists(self.outfile)
 
-        with open(self.outfile, 'r') as f:
+        with open(self.outfile) as f:
             reader = csv.reader(f)
             results = [row for row in reader]
 
         assert len(results) == 2
         for row in results:
-            assert len(row) == 5
-            start_prob, end_prob, span_start, span_end, span = row
-            for prob in (start_prob, end_prob):
+            assert len(row) == 3  # label and 2 class probabilities
+            label, *probs = row
+            for prob in probs:
                 assert 0 <= float(prob) <= 1
-            assert 0 <= int(span_start) <= int(span_end) <= 8
-            assert span != ''
+            assert label != ""
 
         shutil.rmtree(self.tempdir)
