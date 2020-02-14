@@ -9,8 +9,8 @@ from overrides import overrides
 from allennlp.data.dataset_readers.dataset_reader import DatasetReader
 from allennlp.data.fields import LabelField, TextField, MultiLabelField, ListField, ArrayField, MetadataField
 from allennlp.data.instance import Instance
-from allennlp.data.tokenizers import Token, PretrainedTransformerTokenizer, Tokenizer, WordTokenizer
-from allennlp.data.token_indexers import PretrainedTransformerIndexer, TokenIndexer, SingleIdTokenIndexer
+from allennlp.data.tokenizers import Token, PretrainedTransformerTokenizer
+from allennlp.data.token_indexers import PretrainedTransformerIndexer
 
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
 

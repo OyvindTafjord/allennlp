@@ -17,7 +17,7 @@ from allennlp.data.fields import ArrayField, Field, TextField, LabelField
 from allennlp.data.fields import ListField, MetadataField, SequenceLabelField
 from allennlp.data.instance import Instance
 from allennlp.data.token_indexers import PretrainedTransformerIndexer
-from allennlp.data.tokenizers import Token, PretrainedTransformerTokenizer, Tokenizer, WordTokenizer
+from allennlp.data.tokenizers import Token, PretrainedTransformerTokenizer, SpacyTokenizer, Tokenizer
 
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
 # TagSpanType = ((int, int), str)
@@ -57,7 +57,7 @@ class TransformerTaggerReader(DatasetReader):
                                                          start_tokens = [],
                                                          end_tokens = [])
         self._tokenizer_internal = self._tokenizer._tokenizer
-        self._word_tokenizer = word_tokenizer or WordTokenizer()
+        self._word_tokenizer = word_tokenizer or SpacyTokenizer()
         token_indexer = PretrainedTransformerIndexer(pretrained_model, do_lowercase=do_lowercase)
         self._token_indexers = {'tokens': token_indexer}
 

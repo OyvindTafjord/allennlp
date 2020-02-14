@@ -16,7 +16,6 @@ from allennlp.predictors.masked_language_model import MaskedLanguageModelPredict
 from allennlp.predictors.multiple_choice_qa import MultipleChoiceQAPredictor
 from allennlp.predictors.next_token_lm import NextTokenLMPredictor
 from allennlp.predictors.open_information_extraction import OpenIePredictor
-from allennlp.predictors.quarel_parser import QuarelParserPredictor
 from allennlp.predictors.rule_reasoning import RuleReasoningPredictor
 from allennlp.predictors.semantic_role_labeler import SemanticRoleLabelerPredictor
 from allennlp.predictors.sentence_tagger import SentenceTaggerPredictor
