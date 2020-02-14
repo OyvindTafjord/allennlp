@@ -46,6 +46,7 @@ import torch.distributed as dist
 import torch.multiprocessing as mp
 from overrides import overrides
 
+from allennlp.commands.evaluate_custom import evaluate_custom
 from allennlp.commands.subcommand import Subcommand
 from allennlp.common import Params, Registrable, Lazy
 from allennlp.common.checks import check_for_gpu, ConfigurationError
@@ -468,6 +469,7 @@ class TrainModel(Registrable):
         evaluation_dataset: Iterable[Instance] = None,
         evaluation_iterator: DataIterator = None,
         evaluate_on_test: bool = False,
+        evaluate_custom_params: Dict[str, Any] = None,
         batch_weight_key: str = "",
     ) -> None:
         self.serialization_dir = serialization_dir
@@ -476,13 +478,14 @@ class TrainModel(Registrable):
         self.evaluation_dataset = evaluation_dataset
         self.evaluation_iterator = evaluation_iterator
         self.evaluate_on_test = evaluate_on_test
+        self.evaluate_custom_params = evaluate_custom_params
         self.batch_weight_key = batch_weight_key
 
     def run(self) -> Dict[str, Any]:
         return self.trainer.train()
 
     def finish(self, metrics: Dict[str, Any]):
-        if self.evaluation_dataset and self.evaluate_on_test:
+        if self.evaluation_dataset and self.evaluate_on_test and self.evaluate_custom_params is None:
             logger.info("The model will be evaluated using the best epoch weights.")
             test_metrics = training_util.evaluate(
                 self.model,
@@ -499,6 +502,31 @@ class TrainModel(Registrable):
                 "To evaluate on the test set after training, pass the "
                 "'evaluate_on_test' flag, or use the 'allennlp evaluate' command."
             )
+
+        if self.evaluate_custom_params is not None:
+            metadata_fields = self.evaluate_custom_params.get('metadata_fields')
+            if isinstance(metadata_fields, list):
+                metadata_fields = ",".join(metadata_fields)
+            output_file = os.path.join(self.serialization_dir, "eval_validation.jsonl")
+            validation_metrics = evaluate_custom(self.model,
+                                                 self.trainer._validation_data,
+                                                 self.evaluation_iterator,
+                                                 cuda_device=self.trainer.cuda_device,
+                                                 output_file=output_file,
+                                                 metadata_fields=metadata_fields)
+            for key, value in validation_metrics.items():
+                metrics["eval_validation_" + key] = value
+            if self.evaluation_dataset and self.evaluate_on_test:
+                output_file = os.path.join(self.serialization_dir, "eval_test.jsonl")
+                test_metrics = evaluate_custom(self.model,
+                                               self.evaluation_dataset,
+                                               self.evaluation_iterator,
+                                               cuda_device=self.trainer.cuda_device,
+                                               output_file=output_file,
+                                               metadata_fields=metadata_fields)
+                for key, value in test_metrics.items():
+                    metrics["eval_test_" + key] = value
+
         common_util.dump_metrics(
             os.path.join(self.serialization_dir, "metrics.json"), metrics, log=True
         )
@@ -520,6 +548,7 @@ class TrainModel(Registrable):
         validation_data_path: str = None,
         validation_iterator: DataIterator = None,
         test_data_path: str = None,
+        evaluate_custom_params: Dict[str, Any] = None,
         evaluate_on_test: bool = False,
     ) -> "TrainModel":
         """
@@ -641,6 +670,7 @@ class TrainModel(Registrable):
             evaluation_dataset=datasets.get("test"),
             evaluation_iterator=validation_iterator,
             evaluate_on_test=evaluate_on_test,
+            evaluate_custom_params=evaluate_custom_params,
             batch_weight_key=batch_weight_key,
         )
 
