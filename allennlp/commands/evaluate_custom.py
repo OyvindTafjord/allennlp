@@ -28,7 +28,7 @@ import argparse
 from contextlib import ExitStack
 import json
 import logging
-
+from overrides import overrides
 import torch
 
 from allennlp.commands.subcommand import Subcommand
@@ -46,8 +46,10 @@ logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
 
 Tqdm.set_slower_interval(True)
 
+@Subcommand.register("evaluate_custom")
 class EvaluateCustom(Subcommand):
-    def add_subparser(self, name: str, parser: argparse._SubParsersAction) -> argparse.ArgumentParser:  # pylint: disable=protected-access
+    @overrides
+    def add_subparser(self, parser: argparse._SubParsersAction) -> argparse.ArgumentParser:  # pylint: disable=protected-access
         description = '''Evaluate the specified model + dataset with optional output'''
         subparser = parser.add_parser('evaluate_custom',
                                       description=description,
