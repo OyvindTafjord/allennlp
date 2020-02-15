@@ -2,8 +2,8 @@ from typing import Dict, Optional, List, Any
 
 import logging
 from overrides import overrides
-from pytorch_transformers.modeling_xlnet import XLNetConfig, XLNetModel, gelu
-from pytorch_transformers.modeling_utils import SequenceSummary
+from transformers.modeling_xlnet import XLNetConfig, XLNetModel, gelu
+from transformers.modeling_utils import SequenceSummary
 import re
 import torch
 from torch.nn.modules.linear import Linear

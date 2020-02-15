@@ -2,8 +2,8 @@ from typing import Dict, Optional, List, Any
 
 import logging
 from overrides import overrides
-from pytorch_transformers.modeling_roberta import RobertaClassificationHead, RobertaConfig, RobertaModel
-from pytorch_transformers.tokenization_gpt2 import bytes_to_unicode
+from transformers.modeling_roberta import RobertaClassificationHead, RobertaConfig, RobertaModel
+from transformers.tokenization_gpt2 import bytes_to_unicode
 import re
 import torch
 from torch.nn.modules.linear import Linear
@@ -242,7 +242,7 @@ class RobertaClassifierModel(Model):
                 metadata: List[Dict[str, Any]] = None) -> torch.Tensor:
 
         self._debug -= 1
-        input_ids = tokens['tokens']
+        input_ids = tokens['tokens']['token_ids']
 
         batch_size = input_ids.size(0)
         num_choices = input_ids.size(1)

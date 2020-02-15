@@ -1,7 +1,7 @@
 from typing import Dict, Optional, List, Any
 
 import logging
-from pytorch_transformers.modeling_roberta import RobertaClassificationHead, RobertaConfig, RobertaModel
+from transformers.modeling_roberta import RobertaClassificationHead, RobertaConfig, RobertaModel
 import re
 import torch
 from torch.nn.functional import binary_cross_entropy_with_logits

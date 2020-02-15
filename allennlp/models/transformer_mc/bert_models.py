@@ -2,7 +2,7 @@ from typing import Dict, Optional, List, Any
 
 import logging
 from overrides import overrides
-from pytorch_transformers.modeling_bert import BertConfig, BertModel, gelu
+from transformers.modeling_bert import BertConfig, BertModel, gelu
 import re
 import torch
 from torch.nn.modules.linear import Linear

@@ -1,11 +1,14 @@
-from typing import cast, Tuple
+from typing import cast, Dict, List, Tuple
 import re
 
+from copy import deepcopy
+import numpy
 from overrides import overrides
 
 from allennlp.common.util import JsonDict, sanitize
 from allennlp.data import Instance
 from allennlp.data.dataset_readers import TransformerMCQAReader
+from allennlp.data.fields import LabelField
 from allennlp.predictors.predictor import Predictor
 
 @Predictor.register('rule-reasoning')
@@ -87,3 +90,12 @@ class RuleReasoningPredictor(Predictor):
         return_dict.update(outputs)
 
         return sanitize(return_dict)
+
+    @overrides
+    def predictions_to_labeled_instances(
+        self, instance: Instance, outputs: Dict[str, numpy.ndarray]
+    ) -> List[Instance]:
+        new_instance = deepcopy(instance)
+        label = numpy.argmax(outputs["label_probs"])
+        new_instance.add_field("label", LabelField(int(label), skip_indexing=True))
+        return [new_instance]

@@ -51,12 +51,9 @@ class TransformerClassificationReader(DatasetReader):
         if do_lowercase is None:
             do_lowercase = '-uncased' in pretrained_model
 
-        self._tokenizer = PretrainedTransformerTokenizer(pretrained_model,
-                                                         do_lowercase=do_lowercase,
-                                                         start_tokens = [],
-                                                         end_tokens = [])
-        self._tokenizer_internal = self._tokenizer._tokenizer
-        token_indexer = PretrainedTransformerIndexer(pretrained_model, do_lowercase=do_lowercase)
+        self._tokenizer = PretrainedTransformerTokenizer(pretrained_model, add_special_tokens=False)
+        self._tokenizer_internal = self._tokenizer.tokenizer
+        token_indexer = PretrainedTransformerIndexer(pretrained_model)
         self._token_indexers = {'tokens': token_indexer}
 
         self._max_pieces = max_pieces
@@ -234,15 +231,11 @@ class TransformerClassificationReader(DatasetReader):
 
 
     def transformer_features_from_qa(self, question: str, answer: str, context: str = None):
-        cls_token = Token(self._tokenizer_internal.cls_token)
-        sep_token = Token(self._tokenizer_internal.sep_token)
-        #pad_token = self._tokenizer_internal.pad_token
+        cls_token = self._tokenizer.tokenize(self._tokenizer_internal.cls_token)[0]
+        sep_token =  self._tokenizer.tokenize(self._tokenizer_internal.sep_token)[0]
         sep_token_extra = bool(self._model_type in ['roberta'])
         cls_token_at_end = bool(self._model_type in ['xlnet'])
         cls_token_segment_id = 2 if self._model_type in ['xlnet'] else 0
-        #pad_on_left = bool(self._model_type in ['xlnet'])
-        #pad_token_segment_id = 4 if self._model_type in ['xlnet'] else 0
-        #pad_token_val=self._tokenizer.encoder[pad_token] if self._model_type in ['roberta'] else self._tokenizer.vocab[pad_token]
         question = self._add_prefix.get("q", "") + question
         if answer is not None:
             answer = self._add_prefix.get("a",  "") + answer
