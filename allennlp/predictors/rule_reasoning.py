@@ -41,6 +41,16 @@ class RuleReasoningPredictor(Predictor):
         choice_labels = [choice['label'] for choice in question_data['choices']]
         # support both "para" and "passage" for input context
         context = json_dict.get("para", json_dict.get("passage"))
+        if context is not None:
+            #remove newlines and add periods if no other punctuation at ends of lines
+            lines = context.split("\n")
+            res = []
+            for s in lines:
+                s1 = s.trim()
+                if len(s1) > 0 and s1[-1].isalnum():
+                    s1 += "."
+                res.append(s1)
+            context = " ".join(res)
         choice_context_list = [choice.get('para') for choice in question_data['choices']]
         if context is None and "<p>" in question_text:
             context, question_text = question_text.split("<p>", 1)
