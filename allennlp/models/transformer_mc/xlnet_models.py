@@ -2,12 +2,11 @@ from typing import Dict, Optional, List, Any
 
 import logging
 from overrides import overrides
-from transformers.modeling_xlnet import XLNetConfig, XLNetModel, gelu
+from transformers.modeling_xlnet import XLNetConfig, XLNetModel
 from transformers.modeling_utils import SequenceSummary
 import re
 import torch
 from torch.nn.modules.linear import Linear
-from torch.nn.functional import binary_cross_entropy_with_logits
 
 from allennlp.common.params import Params
 from allennlp.data import Vocabulary
