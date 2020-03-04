@@ -46,7 +46,7 @@ class RuleReasoningPredictor(Predictor):
             lines = context.split("\n")
             res = []
             for s in lines:
-                s1 = s.trim()
+                s1 = s.strip()
                 if len(s1) > 0 and s1[-1].isalnum():
                     s1 += "."
                 res.append(s1)
