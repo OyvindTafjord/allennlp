@@ -16,6 +16,7 @@ import argparse
 from allennlp.data import DatasetReader, Instance
 from allennlp.data.batch import Batch
 from allennlp.models.archival import load_archive
+from allennlp.nn import util
 
 logging.basicConfig(
     format='%(asctime)s %(levelname)-8s %(message)s',
@@ -23,12 +24,13 @@ logging.basicConfig(
     datefmt='%Y-%m-%d %H:%M:%S')
 logger = logging.getLogger(__name__)
 
-def get_context_embedding(context, model, dataset_reader):
+def get_context_embedding(context, model, dataset_reader, cuda_device):
     context_instance = Instance({"context": dataset_reader.make_text_field(context)})
     batch = Batch([context_instance])
     batch.index_instances(model.vocab)
-    res = model.context_projection(**batch.as_tensor_dict())
-    return res[0].detach().tolist()
+    model_input = util.move_to_device(batch.as_tensor_dict(), cuda_device)
+    res = model.context_projection(**model_input)
+    return res[0].detach().cpu().tolist()
 
 
 def add_embeddings(args, max_num=-1):
@@ -52,11 +54,11 @@ def add_embeddings(args, max_num=-1):
         for line in input:
             if counter == max_num:
                 break
-            if counter % 10000 == 0:
+            if counter % 1000 == 0:
                 logger.info(f"Item num: {counter}")
             counter += 1
             block = json.loads(line)
-            embedding = get_context_embedding(" ".join(block['sentences']), model, dataset_reader)
+            embedding = get_context_embedding(" ".join(block['sentences']), model, dataset_reader, cuda_device)
             block['embedding'] = embedding
             output.write(json.dumps(block))
             output.write("\n")
