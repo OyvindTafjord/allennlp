@@ -136,7 +136,7 @@ class MultipleChoiceQAPredictor(Predictor):
         )
 
         if question_mc is None:
-            question_mc = " ".join([question_text, *[f"(x) y" for x,y in zip(choice_labels, choice_text_list)]])
+            question_mc = " ".join([question_text, *[f"({x}) {y}" for x,y in zip(choice_labels, choice_text_list)]])
 
         extra_info = {'id': question_data.get('id', "NA"),
                       'question': question_mc,
