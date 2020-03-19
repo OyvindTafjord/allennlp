@@ -43,20 +43,15 @@ class TransformerSpanPredictionReader(DatasetReader):
                  model_type: str = None,
                  doc_stride: int = 100,
                  is_training: bool = True,
+                 allow_no_answer: bool = False,
                  context_selection: str = "first",
                  custom_xlnet_token_conventions: bool = False,
                  answer_can_be_in_question: bool = None,
-                 do_lowercase: bool = None,
                  sample: int = -1) -> None:
         super().__init__()
-        if do_lowercase is None:
-            do_lowercase = '-uncased' in pretrained_model
-        self._tokenizer = PretrainedTransformerTokenizer(pretrained_model,
-                                                         do_lowercase=do_lowercase,
-                                                         start_tokens = [],
-                                                         end_tokens = [])
-        self._tokenizer_internal = self._tokenizer._tokenizer
-        token_indexer = PretrainedTransformerIndexer(pretrained_model, do_lowercase=do_lowercase)
+        self._tokenizer = PretrainedTransformerTokenizer(pretrained_model, add_special_tokens=False)
+        self._tokenizer_internal = self._tokenizer.tokenizer
+        token_indexer = PretrainedTransformerIndexer(pretrained_model)
         self._token_indexers = {'tokens': token_indexer}
 
         self._max_pieces = max_pieces
@@ -72,7 +67,7 @@ class TransformerSpanPredictionReader(DatasetReader):
         self._answer_can_be_in_question = answer_can_be_in_question
         if self._answer_can_be_in_question is None:
             self._answer_can_be_in_question = syntax == "ropes"
-        self._allow_no_answer = None
+        self._allow_no_answer = allow_no_answer
         self._is_training = is_training
         self._context_selection = context_selection
         self._global_debug_counters = {"best_window": 5}
@@ -84,6 +79,10 @@ class TransformerSpanPredictionReader(DatasetReader):
         # If we don't want custom XLNet token conventions downstream, treat as Roberta:
         if self._model_type == 'xlnet' and not custom_xlnet_token_conventions:
             self._model_type = 'roberta'
+        # Add prefix tokenization space for GPT2-style tokenizers
+        self._tokenizer_kwargs = {}
+        if self._model_type in ['roberta', 'gpt2']:
+            self._tokenizer_kwargs['add_prefix_space'] = True
 
     @overrides
     def _read(self, file_path: str):
@@ -150,7 +149,10 @@ class TransformerSpanPredictionReader(DatasetReader):
     def _example_to_instance(self, example, debug):
         fields: Dict[str, Field] = {}
         features = self._transformer_features_from_example(example, debug)
-        tokens_field = TextField(features.tokens, self._token_indexers)
+        if features is None:
+            logger.info(f"NONE example = {example}")
+        tokens = [Token(t, text_id=self._tokenizer_internal._convert_token_to_id(t)) for t in features.tokens]
+        tokens_field = TextField(tokens, self._token_indexers)
         segment_ids_field = SequenceLabelField(features.segment_ids, tokens_field)
 
         fields['tokens'] = tokens_field
@@ -159,10 +161,11 @@ class TransformerSpanPredictionReader(DatasetReader):
         metadata = {
             "id": features.unique_id,
             "question_text": example.question_text,
-            "tokens": [x.text for x in features.tokens],
+            "tokens": [x for x in features.tokens],
             "context_full": example.doc_text,
             "answer_texts": example.all_answer_texts,
-            "answer_mask": features.p_mask
+            "answer_mask": features.p_mask,
+            "is_impossible": features.is_impossible
         }
 
         if features.start_position is not None:
@@ -371,7 +374,7 @@ class TransformerSpanPredictionReader(DatasetReader):
         # the word "Japanese". Since our WordPiece tokenizer does not split
         # "Japanese", we just use "Japanese" as the annotation. This is fairly rare
         # in SQuAD, but does happen.
-        tok_answer_text = self._string_from_tokens(self._tokenizer.tokenize(orig_answer_text))
+        tok_answer_text = self._string_from_tokens(self._tokenizer_internal.tokenize(orig_answer_text, **self._tokenizer_kwargs))
 
         for new_start in range(input_start, input_end + 1):
             for new_end in range(input_end, new_start - 1, -1):
@@ -382,7 +385,7 @@ class TransformerSpanPredictionReader(DatasetReader):
         return (input_start, input_end)
 
     def _string_from_tokens(self, tokens):
-        tokens_text = [x.text for x in tokens]
+        tokens_text = [x for x in tokens]
         if hasattr(self._tokenizer_internal, "convert_tokens_to_string"):
             return self._tokenizer_internal.convert_tokens_to_string(tokens_text)
         else:
@@ -390,8 +393,8 @@ class TransformerSpanPredictionReader(DatasetReader):
 
     def _transformer_features_from_example(self, example, debug):
 
-        cls_token = Token(self._tokenizer_internal.cls_token)
-        sep_token = Token(self._tokenizer_internal.sep_token)
+        cls_token = self._tokenizer_internal.cls_token
+        sep_token = self._tokenizer_internal.sep_token
         cls_token_at_end = bool(self._model_type in ['xlnet'])
         cls_token_segment_id = 2 if self._model_type in ['xlnet'] else 0
         sequence_a_segment_id = 0
@@ -404,7 +407,7 @@ class TransformerSpanPredictionReader(DatasetReader):
         all_doc_tokens = []
         for (i, token) in enumerate(example.doc_tokens):
             orig_to_tok_index.append(len(all_doc_tokens))
-            sub_tokens = self._tokenizer.tokenize(token)
+            sub_tokens = self._tokenizer_internal.tokenize(token, **self._tokenizer_kwargs)
             for sub_token in sub_tokens:
                 tok_to_orig_index.append(i)
                 all_doc_tokens.append(sub_token)
@@ -414,7 +417,7 @@ class TransformerSpanPredictionReader(DatasetReader):
         all_query_tokens = []
         for (i, token) in enumerate(example.question_tokens):
             q_orig_to_tok_index.append(len(all_query_tokens))
-            sub_tokens = self._tokenizer.tokenize(token)
+            sub_tokens = self._tokenizer_internal.tokenize(token, **self._tokenizer_kwargs)
             for sub_token in sub_tokens:
                 q_tok_to_orig_index.append(i)
                 all_query_tokens.append(sub_token)
@@ -553,7 +556,7 @@ class TransformerSpanPredictionReader(DatasetReader):
                 start_position = cls_index
                 end_position = cls_index
 
-            if debug > 100:
+            if debug > 100 or example.qas_id == "56d0a745234ae51400d9c3fc":
                 logger.info("*** Example ***")
                 logger.info("doc_span_index: %s" % (doc_span_index))
                 logger.info("tokens: %s" % tokens)
@@ -584,10 +587,10 @@ class TransformerSpanPredictionReader(DatasetReader):
                     end_position=end_position,
                     is_impossible=span_is_impossible))
         # Just filter away impossible/missing spans for now (this uses labels, so not fair on dev/test):
-        if example.orig_answer_text and self._is_training:
+        if example.orig_answer_text and self._is_training and not self._allow_no_answer:
             features_list = list(filter(lambda x: not x.is_impossible and x.start_position is not None, features_list))
-        if not self._is_training and len(features_list) > 1:
-            # If we're not creating training data, just pick the first/last context window
+        if (not self._is_training or (self._allow_no_answer and example.is_impossible)) and len(features_list) > 1:
+            # If we're not creating training data, or it's no-answer, just pick the first/last context window
             if self._context_selection == "last":
                 features_list = features_list[-1:]
             else:

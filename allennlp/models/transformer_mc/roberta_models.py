@@ -232,6 +232,7 @@ class RobertaClassifierModel(Model):
         self._label_namespace = label_namespace
         self._accuracy = CategoricalAccuracy()
         self._loss = torch.nn.CrossEntropyLoss()
+        self._f1measure = F1Measure(positive_label=1)
         self._debug = 2
         self._padding_value = 1  # The index of the RoBERTa padding token
 
@@ -287,6 +288,7 @@ class RobertaClassifierModel(Model):
         if label is not None:
             loss = self._loss(label_logits, label)
             self._accuracy(label_logits, label)
+            self._f1measure(label_logits, label)
             output_dict["loss"] = loss
 
         if self._debug > 0:
@@ -295,8 +297,12 @@ class RobertaClassifierModel(Model):
 
 
     def get_metrics(self, reset: bool = False) -> Dict[str, float]:
+        precision, recall, f1 = self._f1measure.get_metric(reset)
         return {
             'accuracy': self._accuracy.get_metric(reset),
+            'precision': precision,
+            'recall': recall,
+            'f1': f1
         }
 
     @classmethod
@@ -372,10 +378,8 @@ class RobertaSpanPredictionModel(Model):
                 metadata: List[Dict[str, Any]] = None) -> torch.Tensor:
 
         self._debug -= 1
-        input_ids = tokens['tokens']
-
+        input_ids = tokens['tokens']['token_ids']
         batch_size = input_ids.size(0)
-
         tokens_mask = (input_ids != self._padding_value).long()
 
         if self._debug > 0:
@@ -443,12 +447,17 @@ class RobertaSpanPredictionModel(Model):
                 predicted_end = predicted_span[1]
                 predicted_tokens = tokens_text[predicted_start:(predicted_end + 1)]
                 best_span_string = self.convert_tokens_to_string(predicted_tokens)
+                if predicted_start == predicted_end == 0:
+                    best_span_string = ""
                 output_dict['best_span_str'].append(best_span_string)
                 answer_texts = metadata[i].get('answer_texts', [])
+                if metadata[i].get('is_impossible'):
+                    answer_texts = [""]
                 exact_match = 0
                 f1_score = 0
-                if answer_texts:
+                if len(answer_texts) > 0:
                     exact_match, f1_score = self._squad_metrics(best_span_string, answer_texts)
+
                 output_dict['exact_match'].append(exact_match)
                 output_dict['f1_score'].append(f1_score)
             output_dict['tokens_texts'] = tokens_texts
