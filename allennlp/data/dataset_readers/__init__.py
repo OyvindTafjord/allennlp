@@ -46,4 +46,5 @@ from allennlp.data.dataset_readers.transformer_ddi import TransformerDDIDatasetR
 from allennlp.data.dataset_readers.transformer_ict import TransformerICTDatasetReader
 from allennlp.data.dataset_readers.transformer_mc_qa import TransformerMCQAReader
 from allennlp.data.dataset_readers.transformer_span_prediction import TransformerSpanPredictionReader
+from allennlp.data.dataset_readers.transformer_span_reranker import TransformerSpanRerankerDatasetReader
 from allennlp.data.dataset_readers.transformer_tagger import TransformerTaggerReader
