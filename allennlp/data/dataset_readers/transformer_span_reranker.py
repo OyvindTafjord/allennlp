@@ -19,6 +19,7 @@ from allennlp.data.fields import Field, LabelField, TextField, MultiLabelField, 
 from allennlp.data.instance import Instance
 from allennlp.data.tokenizers import Token, PretrainedTransformerTokenizer
 from allennlp.data.token_indexers import PretrainedTransformerIndexer
+from allennlp.nn import util
 
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
 
@@ -38,9 +39,11 @@ class TransformerSpanRerankerDatasetReader(DatasetReader):
                  is_training: bool = True,
                  dataset_dir_out: str = None,
                  top_n_contexts: int = -1,
-                 min_positive_frac: float = 0.1,
+                 min_positive_frac: float = -1,
+                 enforce_max_negative_frac: float = None,
                  max_pieces: int = 512,
                  doc_stride: int = 100,
+                 cuda_device: int = -1,
                  sample: int = -1
                  ) -> None:
         super().__init__(lazy)
@@ -59,14 +62,23 @@ class TransformerSpanRerankerDatasetReader(DatasetReader):
         self._tokenizer_internal = self._tokenizer.tokenizer
         # Assume same token indexer in ranker model and span prediction model
         self._token_indexers = self._span_reader._token_indexers
-        self._ranker_model = load_model_with_cache(ranker_model_path)
+        self._cuda_device = cuda_device
+        self._ranker_model = load_model_with_cache(ranker_model_path, cuda_device)
         self._ranker_model.eval()
+        ranker_pretrained_model = self._ranker_model.pretrained_model
+        self._ranker_model_tokenizer = PretrainedTransformerTokenizer(ranker_pretrained_model,
+                                                                      max_length=max_pieces,
+                                                                      add_special_tokens=True)
+        self._ranker_model_token_indexers =  {'tokens': PretrainedTransformerIndexer(ranker_pretrained_model,
+                                                                                     max_length=max_pieces)}
+
 
         self._max_pieces = max_pieces
         self._sample = sample
         self._syntax = syntax
         self._top_n_contexts = top_n_contexts
         self._min_positive_frac = min_positive_frac
+        self._enforce_max_negative_frac = enforce_max_negative_frac
         self._skip_id_regex = skip_id_regex
         self._add_prefix = add_prefix or {}
         self._is_training = is_training
@@ -125,37 +137,45 @@ class TransformerSpanRerankerDatasetReader(DatasetReader):
                 if self._is_training and self._min_positive_frac > 0:
                     has_answers = [1 for x in contexts if len(x['answers']) > 0]
                     if len(has_answers) < self._min_positive_frac * len(contexts):
-                        logger.info(f"{len(has_answers)}")
-                        logger.info(self._min_positive_frac)
-                        logger.info(f"{self._min_positive_frac * len(contexts)}")
-                        logger.info(f"{[len(x['answers']) for x in contexts]}")
-                        logger.info(f"Skipping {q_id}: too few positives")
+                        logger.info(f"Skipping {q_id}: too few positives ({len(has_answers)} out of {len(contexts)})")
                         continue
+                max_negatives = -1
+                if self._is_training and self._enforce_max_negative_frac is not None and self._enforce_max_negative_frac >= 0:
+                    num_positives = len([1 for x in contexts if len(x['answers']) > 0])
+                    max_negatives = self._enforce_max_negative_frac * num_positives
 
                 query_raw_vector = self._get_query_raw_vector(question_text)
                 question_text_prefixed = self._add_prefix.get("q", "") + question_text
                 question_tokens = self.split_whitespace(question_text_prefixed)[0]
                 full_answers = item_json.get('answers')
-
+                num_negatives = 0
                 for context in contexts:
-                    counter -= 1
-                    debug -= 1
-                    if counter == 0:
-                        done = True
-                        break
-
-                    if debug > 0:
-                        logger.info(f"context = {context}")
                     context_text = context['text']
                     context_text_prefixed = self._add_prefix.get("c", "") + context_text
                     # context_headers = context['headers']
                     context_embedding = context['embedding']
                     answers = context.get('answers')
+                    if answers is not None and len(answers) == 0:
+                        num_negatives += 1
+                        if max_negatives >= 0 and num_negatives >= max_negatives:
+                            continue
+
+                    debug -= 1
+                    if debug > 0:
+                        logger.info(f"context = {context}")
+
                     ir_score = context.get('score')
 
                     sub_id = q_id + "_" + context.get('doc_id', 'NA')
                     example = self.make_span_prediction_example(sub_id, question_text, question_tokens,
                                                             context_text_prefixed, answers)
+                    # empty documents are removed (buggy data)
+                    if len(example.doc_tokens) == 0:
+                        continue
+                    counter -= 1
+                    if counter == 0:
+                        done = True
+                        break
                     additional_metadata = {
                         "question": question_text,
                         "context": context_text,
@@ -170,18 +190,20 @@ class TransformerSpanRerankerDatasetReader(DatasetReader):
                         additional_metadata=additional_metadata,
                         debug=debug)
 
+
     def _get_query_raw_vector(self, text):
-        sentence_instance = Instance({"sentence": self.make_text_field(text)})
+        sentence_instance = Instance({"sentence": self.make_ranker_text_field(text)})
         batch = Batch([sentence_instance])
         batch.index_instances(self._ranker_model.vocab)
         self._ranker_model.eval()
-        res = self._ranker_model.text_raw_vector(**batch.as_tensor_dict())
+        batch_tensor = util.move_to_device(batch.as_tensor_dict(), self._cuda_device)
+        res = self._ranker_model.text_raw_vector(**batch_tensor)
         return res[0].detach().tolist()
 
-    def make_text_field(self, text: str):
+    def make_ranker_text_field(self, text: str):
         # Hackily add special tokens here since we're reusing tokenizer without them
-        tokens = self._tokenizer.tokenize("<s> " + text + " </s>")
-        return TextField(tokens, self._token_indexers)
+        tokens = self._ranker_model_tokenizer.tokenize(text)
+        return TextField(tokens, self._ranker_model_token_indexers)
 
     # This all can be streamlined, but using inherited old code for now
     def split_whitespace(self, text):
@@ -263,6 +285,8 @@ class TransformerSpanRerankerDatasetReader(DatasetReader):
 
         fields: Dict[str, Field] = {}
         features = self._span_reader._transformer_features_from_example(example, debug)
+        if debug > 0:
+            logger.info(f"example = {example}")
         if features is None:
             # Shouldn't happen
             logger.info(f"NONE example = {example}")
@@ -274,10 +298,14 @@ class TransformerSpanRerankerDatasetReader(DatasetReader):
         fields['segment_ids'] = segment_ids_field
         fields['query_raw_vector'] = ArrayField(np.array(query_raw_vector))
         fields['block_embedding'] = ArrayField(np.array(context_embedding))
+        if ir_score is not None:
+            logit = np.log(np.array([ir_score / (1 - ir_score)]))
+            fields['orig_logit'] = ArrayField(logit)
 
         metadata = additional_metadata or {}
         metadata.update({
             "id": item_id,
+            "question_text": example.question_text,
             "tokens": [x for x in features.tokens],
             "answer_texts": example.all_answer_texts,
             "answer_mask": features.p_mask,
@@ -289,7 +317,7 @@ class TransformerSpanRerankerDatasetReader(DatasetReader):
             fields['end_positions'] = LabelField(features.end_position, skip_indexing=True)
             metadata['start_positions'] = features.start_position
             metadata['end_positions'] = features.end_position
-            ranker_label = 0 if features.is_impossible else 0
+            ranker_label = 0 if features.is_impossible else 1
             fields['ranker_label'] = LabelField(ranker_label, skip_indexing=True)
 
 
@@ -306,10 +334,12 @@ class TransformerSpanRerankerDatasetReader(DatasetReader):
                 answer_text = self._span_reader._string_from_tokens(
                     features.tokens[features.start_position:(features.end_position + 1)])
                 logger.info(f"answer from tokens = {answer_text}")
+                logger.info(f"orig_logit = {logit}")
                 logger.info(f"ranker_label = {ranker_label}")
                 logger.info(f"ir_score = {ir_score}")
-                query_embedding = self._ranker_model._sentence_projection(torch.Tensor([query_raw_vector]))[0]
-                new_ir_score = (torch.Tensor(context_embedding) * query_embedding).sum()
+                query_raw_vector_tensor = util.move_to_device(torch.Tensor([query_raw_vector]), self._cuda_device)
+                query_embedding = self._ranker_model._sentence_projection(query_raw_vector_tensor)[0]
+                new_ir_score = (query_raw_vector_tensor.new(context_embedding) * query_embedding).sum()
                 new_ir_score += self._ranker_model._classifier_bias.item()
                 new_ir_score = torch.sigmoid(new_ir_score).item()
                 logger.info(f"derived ir_score = {new_ir_score}")
