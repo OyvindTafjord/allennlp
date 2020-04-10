@@ -140,7 +140,11 @@ def _persist_data(file_handle, metadata, model_output, metadata_fields_list) -> 
                 if key in res:
                     key_out = key+"-model"
                 if key in metadata_fields_list:
-                    if len(value) == batch_size:
+                    try:
+                        value_len = len(value)
+                    except:
+                        value_len = -1
+                    if value_len == batch_size:
                         val = value[index]
                         res[key_out] = sanitize(val)
                     else:
