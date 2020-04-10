@@ -16,10 +16,10 @@ logger = logging.getLogger(__name__)
 LOADED_MODELS = {}
 
 
-def load_model_with_cache(archive_file: str) -> Model:
+def load_model_with_cache(archive_file: str, cuda_device: int = -1) -> Model:
     if archive_file in LOADED_MODELS:
         return LOADED_MODELS[archive_file]
-    archive = load_archive(archive_file)
+    archive = load_archive(archive_file, cuda_device)
     model = archive.model
     LOADED_MODELS[archive_file] = model
     return model
@@ -43,6 +43,8 @@ class RobertaICTClassifierModel(Model):
                  on_load: bool = False,
                  regularizer: Optional[RegularizerApplicator] = None) -> None:
         super().__init__(vocab, regularizer)
+
+        self.pretrained_model = pretrained_model
 
         if on_load:
             logging.info(f"Skipping loading of initial Transformer weights")
@@ -261,6 +263,7 @@ class RobertaSpanRerankerModel(Model):
                 tokens: Dict[str, torch.LongTensor],
                 block_embedding: torch.Tensor,
                 query_raw_vector: torch.Tensor,
+                orig_logit: torch.Tensor = None,
                 segment_ids: torch.LongTensor = None,
                 ranker_label: torch.LongTensor = None,
                 start_positions: torch.LongTensor = None,
@@ -279,6 +282,8 @@ class RobertaSpanRerankerModel(Model):
         # Batch vector dot product
         label_logits = (block_embedding * sentence_projection).sum(dim=1)
         label_logits += self._classifier_bias
+        if orig_logit is not None:
+            label_logits -= orig_logit.squeeze()
 
         if ranker_label is not None:
             label_used = ranker_label
@@ -293,9 +298,10 @@ class RobertaSpanRerankerModel(Model):
             # somewhat of a hack to use existing f1 measure
             self._f1measure(torch.stack([-label_logits, label_logits]).t(), label_used)
             output_dict['true_ranker_label'] = label_used.view(batch_size, -1)
-            output_dict['ranker_label'] = (label_logits > 0).view(batch_size, -1)
+            output_dict['ranker_label'] = ((1+torch.sign(label_logits))/2).long().view(batch_size, -1)
             output_dict['ranker_label_logits'] = label_logits.view(batch_size, -1)
             output_dict['ranker_label_probs'] = torch.sigmoid(label_logits).view(batch_size, -1)
+            output_dict['orig_logit'] = orig_logit.squeeze()
             output_dict["loss"] += self._ranker_loss_factor * ranker_loss
 
         if self._debug > 0:
