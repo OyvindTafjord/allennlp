@@ -43,7 +43,7 @@ class RuleReasoningPredictor(Predictor):
                 item_id="NA",
                 question_text=q,
                 context=context))
-        meta = {'question_list': question_list}
+        meta = {'question_list': question_list, 'question_raw': question_raw}
 
         return instances, meta
 
@@ -73,7 +73,6 @@ class RuleReasoningPredictor(Predictor):
         return_dict['answer_strings'] = answer_strings
         return_dict['labels'] = labels
         return_dict['scores'] = scores
-        return_dict['question_list'] = question_list
 
         return sanitize(return_dict)
 
